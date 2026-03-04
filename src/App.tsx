@@ -15,7 +15,7 @@ const EXPANSION_RATES = [
   { label: 'Bas (Lance)', value: 10 },
   { label: 'Moyen (Lance)', value: 50 },
   { label: 'HF Batfan', value: 250 },
-  { label: 'HF MT296', value: 400 }
+  { label: 'HF MT296', value: 800 }
 ];
 
 // --- HELPERS ---
@@ -23,14 +23,24 @@ const loadPersistedState = (key: string) => {
   try {
     const saved = localStorage.getItem(key);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.lastTimestamp && (parsed.isTimerActive || parsed.isVentilating)) {
-        const diff = Math.floor((Date.now() - parsed.lastTimestamp) / 1000);
-        parsed.elapsedSeconds = (parsed.elapsedSeconds || 0) + diff;
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+           if (parsed.lastTimestamp && (parsed.isTimerActive || parsed.isVentilating)) {
+             const diff = Math.floor((Date.now() - parsed.lastTimestamp) / 1000);
+             // Ensure elapsedSeconds is a number
+             const currentElapsed = typeof parsed.elapsedSeconds === 'number' ? parsed.elapsedSeconds : 0;
+             parsed.elapsedSeconds = currentElapsed + diff;
+           }
+           return parsed;
+        }
+      } catch (parseError) {
+        console.error(`Error parsing state for ${key}:`, parseError);
+        // If parsing fails, return null to force default state
+        return null;
       }
-      return parsed;
     }
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error(`Error loading state for ${key}:`, e); }
   return null;
 };
 
@@ -261,7 +271,6 @@ function FoamApp({ onBack }: { onBack: () => void }) {
             <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" /><h2 className="text-[11px] font-black uppercase tracking-widest text-white/60">Intervention Active</h2></div>
             <div className="flex gap-2">
               <button onClick={() => setMode('setup')} className="p-3 bg-white/5 rounded-xl border border-white/10"><Settings size={20}/></button>
-              <button onClick={() => setIsTimerActive(!isTimerActive)} className={`p-3 rounded-xl border ${isTimerActive ? 'bg-yellow-500/20 text-yellow-500' : 'bg-green-500/20 text-green-500'}`}>{isTimerActive ? <Pause/> : <Play/>}</button>
             </div>
           </div>
 
@@ -290,7 +299,12 @@ function FoamApp({ onBack }: { onBack: () => void }) {
               </div>
             </div>
           </div>
-          <button onClick={() => { setIsTimerActive(false); setMode('report'); }} className="w-full py-5 bg-red-600/20 border-2 border-red-500 rounded-3xl text-red-400 font-black uppercase tracking-widest"><CheckCircle2 className="inline mr-2"/> Fin Opération</button>
+          <div className="flex gap-3">
+            <button onClick={() => setIsTimerActive(!isTimerActive)} className={`flex-1 py-5 rounded-3xl font-black uppercase tracking-widest flex items-center justify-center gap-2 border-2 ${isTimerActive ? 'bg-yellow-500/10 border-yellow-500 text-yellow-500' : 'bg-green-500/10 border-green-500 text-green-500'}`}>
+              {isTimerActive ? <><Pause/> PAUSE</> : <><Play/> REPRENDRE</>}
+            </button>
+            <button onClick={() => { setIsTimerActive(false); setMode('report'); }} className="flex-1 py-5 bg-red-600/20 border-2 border-red-500 rounded-3xl text-red-400 font-black uppercase tracking-widest flex items-center justify-center gap-2"><CheckCircle2/> Fin Opération</button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col flex-1 justify-center space-y-6 animate-[fadeIn_0.5s_ease-out]">
@@ -346,7 +360,8 @@ const VENT_SPECS = [
       'Eclairage LED zone soufflage',
       'Inclinaison +65° à -90°',
       'Technologie Néo (jet ovalisé)',
-      'Mousse HF (Fois. 250-400)'
+      'Mousse HF (Fois. 250-400)',
+      'VPP Cage d\'escalier : 3 à 4 étages'
     ],
     usage: 'VPP, Dépression, Mousse'
   },
@@ -484,58 +499,87 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 
   if (view === 'specs') {
     return (
-      <div className="flex flex-col flex-1 p-3 sm:p-6 space-y-4 animate-[fadeIn_0.5s_ease-out] max-w-4xl mx-auto w-full">
-        <div className="flex justify-between items-center border-b border-white/5 pb-4 pt-2">
-            <div className="flex items-center gap-3">
-              <button onClick={() => setView('menu')} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"><ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white/60" /></button>
-              <div className="bg-gradient-to-br from-blue-400 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/20"><FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" /></div>
-              <div><h1 className="text-xl sm:text-2xl font-black uppercase text-white">Spécificités</h1><p className="text-[9px] sm:text-[10px] font-bold text-blue-400 uppercase tracking-widest">Matériel Ventilation</p></div>
-            </div>
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1 hide-scrollbar">
-          {VENT_SPECS.map(spec => (
-            <div key={spec.id} className="bg-white/[0.02] border border-white/10 rounded-3xl overflow-hidden">
-              <div className="p-5 border-b border-white/5 flex items-start justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center border border-white/5 ${spec.color}`}>
-                    <spec.icon size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black uppercase text-white">{spec.name}</h3>
-                    <p className={`text-[10px] font-bold uppercase tracking-wider ${spec.color}`}>{spec.type}</p>
+      <div className="flex flex-col flex-1 bg-[#1a237e] text-blue-100 p-4 sm:p-6 font-mono animate-[fadeIn_0.5s_ease-out] relative overflow-hidden w-full">
+        {/* Background Grid Effect */}
+        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+        
+        <div className="relative z-10 flex flex-col h-full max-w-4xl mx-auto w-full space-y-6">
+          <div className="flex justify-between items-center border-b-2 border-blue-400/30 pb-4">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setView('menu')} className="p-2 bg-blue-900/50 border border-blue-400/30 rounded hover:bg-blue-800 transition-colors"><ChevronLeft className="w-6 h-6 text-blue-300" /></button>
+                <div className="bg-blue-500/20 p-2 rounded border border-blue-400/50"><FileText className="w-6 h-6 text-blue-300" /></div>
+                <div><h1 className="text-2xl font-black uppercase tracking-widest text-blue-300">Spécificités</h1><p className="text-[10px] font-bold text-blue-400/60 uppercase tracking-widest">Matériel Ventilation</p></div>
+              </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto space-y-6 pr-1 hide-scrollbar">
+            {VENT_SPECS.map(spec => (
+              <div key={spec.id} className="bg-blue-900/40 border-2 border-blue-400/20 rounded-xl overflow-hidden relative group backdrop-blur-sm">
+                {/* Header */}
+                <div className="p-6 flex items-start justify-between gap-4 relative z-10 border-b border-blue-400/10">
+                  <div className="flex items-center gap-5">
+                    <div className={`w-16 h-16 rounded-xl bg-blue-950/50 flex items-center justify-center border border-blue-400/20 ${spec.color} shadow-lg`}>
+                      <spec.icon size={32} />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black uppercase text-white tracking-tight">{spec.name}</h3>
+                      <p className={`text-xs font-bold uppercase tracking-widest ${spec.color} mt-1`}>{spec.type}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <h4 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-1">Performances</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    {spec.stats.map((stat, i) => (
-                      <div key={i} className="bg-black/20 p-2 rounded-xl border border-white/5">
-                        <p className="text-[9px] text-white/40 uppercase font-bold">{stat.label}</p>
-                        <p className="text-sm font-black text-white">{stat.value}</p>
+
+                {/* Warning for MT296 */}
+                {spec.id === 'mt296' && (
+                  <div className="mx-6 mt-4 bg-red-900/40 border border-red-500/50 p-4 rounded-xl flex items-start gap-3">
+                    <AlertTriangle className="text-red-400 shrink-0 mt-0.5" size={20} />
+                    <div>
+                      <p className="text-xs font-black uppercase text-red-400 mb-1">Attention : Gaz d'échappement</p>
+                      <p className="text-[11px] text-red-200/80 leading-relaxed">
+                        Ce ventilateur thermique produit du monoxyde de carbone (CO). 
+                        <strong className="text-red-200"> Ne jamais l'utiliser dans un volume clos ou mal ventilé.</strong> 
+                        Les gaz d'échappement sont propulsés dans la veine d'air.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Content Grid */}
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Stats */}
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-black uppercase text-blue-400/60 tracking-widest border-b border-blue-400/10 pb-2">Performances</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {spec.stats.map((stat, i) => (
+                        <div key={i} className="bg-blue-950/40 p-3 rounded-lg border border-blue-400/10 hover:border-blue-400/30 transition-colors">
+                          <p className="text-[9px] text-blue-300/60 uppercase font-bold mb-1">{stat.label}</p>
+                          <p className="text-base font-black text-white">{stat.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Features */}
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-black uppercase text-blue-400/60 tracking-widest border-b border-blue-400/10 pb-2">Caractéristiques</h4>
+                    <ul className="space-y-2">
+                      {spec.features.map((feat, i) => (
+                        <li key={i} className="text-xs text-blue-100/80 flex items-start gap-3 font-medium">
+                          <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${spec.color.replace('text-', 'bg-')}`} />
+                          {feat}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="pt-4 mt-2">
+                      <div className="bg-blue-950/40 p-3 rounded-lg border border-blue-400/10">
+                          <span className="text-[9px] font-black uppercase text-blue-400/40 block mb-1">Usage Recommandé</span>
+                          <span className="text-xs font-bold uppercase text-blue-200 tracking-wide">{spec.usage}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <h4 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-1">Caractéristiques & Usage</h4>
-                  <ul className="space-y-1">
-                    {spec.features.map((feat, i) => (
-                      <li key={i} className="text-[11px] text-white/70 flex items-start gap-2">
-                        <span className={`mt-1 w-1 h-1 rounded-full ${spec.color.replace('text-', 'bg-')}`} />
-                        {feat}
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="pt-2">
-                    <span className="text-[9px] font-black uppercase text-white/30 mr-2">Usage:</span>
-                    <span className="text-[10px] font-bold uppercase text-white">{spec.usage}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -1147,9 +1191,11 @@ export default function App() {
     window.history.pushState({ route: newRoute }, '');
   };
 
+  // Use loadPersistedState for safe parsing and timestamp adjustment
   const foamState = loadPersistedState('sdis77_foam_state');
   const ventState = loadPersistedState('sdis77_vent_state');
-  const isFoamActive = foamState?.mode === 'operational';
+  
+  const isFoamActive = foamState?.mode === 'operational' && foamState?.isTimerActive;
   const isVentActive = ventState?.isVentilating;
 
   return (
@@ -1159,9 +1205,9 @@ export default function App() {
           <div className="text-center mb-10 relative">
             <div className="absolute inset-0 bg-red-600/20 blur-[100px] rounded-full pointer-events-none" />
             <div className="relative">
-              <h1 className="text-7xl sm:text-9xl font-black tracking-tighter uppercase text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 drop-shadow-2xl">
-                VO SDIS
-                <span className="text-red-600 ml-4">77</span>
+              <h1 className="text-7xl sm:text-9xl font-black tracking-tighter uppercase drop-shadow-2xl">
+                <span className="text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400">OPS</span>
+                <span className="text-red-600">FLOW</span>
               </h1>
             </div>
             <div className="flex items-center justify-center gap-4 mt-6">
@@ -1212,7 +1258,7 @@ export default function App() {
               <div className="text-left"><h2 className="text-2xl font-black uppercase">Mousse</h2><p className="text-[10px] uppercase font-bold text-white/30">Calculateur & Autonomie</p></div>
             </button>
           </div>
-          <div className="mt-auto pt-10 text-[8px] font-mono text-white/20 uppercase tracking-[0.3em]">SDIS 77 • Outils Numériques</div>
+          <div className="mt-auto pt-10 text-[8px] font-mono text-white/20 uppercase tracking-[0.3em]">Outils numérique par <span className="text-white font-bold">Cucalon & Decarreaux</span></div>
         </div>
       ) : route === 'foam-menu' ? (
         <FoamMenu onNavigate={navigateTo} onBack={()=>window.history.back()} />
