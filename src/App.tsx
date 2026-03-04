@@ -346,7 +346,7 @@ const VENT_SPECS = [
       'Eclairage LED zone soufflage',
       'Inclinaison +65° à -90°',
       'Technologie Néo (jet ovalisé)',
-      'Compatible Mousse HF'
+      'Mousse HF (Fois. 250-400)'
     ],
     usage: 'VPP, Dépression, Mousse'
   },
@@ -359,12 +359,12 @@ const VENT_SPECS = [
     stats: [
       { label: 'Débit', value: '5 180 m³/h' },
       { label: 'Alim.', value: '220V (10m)' },
-      { label: 'Gaines', value: '2 x 5m' },
+      { label: 'Gaine Max', value: '30 m' },
       { label: 'Zone', value: 'ATEX 1 & 2' }
     ],
     features: [
       'Extraction vapeurs dangereuses',
-      'Gaines antistatiques',
+      'Fourni avec 2 gaines de 5m',
       'Corps acier inoxydable',
       'Protection thermique'
     ],
@@ -384,7 +384,7 @@ const VENT_SPECS = [
     ],
     features: [
       'Brumisation (16 L/min)',
-      'Mousse HF (BioForN 1%)',
+      'Mousse HF (Fois. 400-800)',
       'Inclinaison réglable',
       'Très puissant'
     ],
