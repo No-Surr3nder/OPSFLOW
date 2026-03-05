@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { 
   Flame, Droplets, Zap, Plus, Minus, RefreshCcw, ChevronRight, CheckCircle2, 
   Pause, Play, RotateCcw, Database, Crosshair, Activity, ShieldAlert, 
@@ -18,10 +18,42 @@ const EXPANSION_RATES = [
   { label: 'HF MT296', value: 800 }
 ];
 
+// --- ERROR BOUNDARY ---
+class ErrorBoundary extends Component<any, any> {
+  state: any;
+  props: any;
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6 text-center">
+          <AlertTriangle size={64} className="text-red-500 mb-4" />
+          <h1 className="text-2xl font-black uppercase mb-2">Une erreur est survenue</h1>
+          <p className="text-white/60 mb-8 max-w-md">L'application a rencontré un problème inattendu. Vos données ont été préservées.</p>
+          <button 
+            onClick={() => { localStorage.clear(); window.location.reload(); }}
+            className="px-8 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest"
+          >
+            Réinitialiser l'App
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // --- HELPERS ---
 const loadPersistedState = (key: string) => {
   try {
-    const saved = localStorage.getItem(key);
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -30,13 +62,12 @@ const loadPersistedState = (key: string) => {
              const diff = Math.floor((Date.now() - parsed.lastTimestamp) / 1000);
              // Ensure elapsedSeconds is a number
              const currentElapsed = typeof parsed.elapsedSeconds === 'number' ? parsed.elapsedSeconds : 0;
-             parsed.elapsedSeconds = currentElapsed + diff;
+             parsed.elapsedSeconds = Math.max(0, currentElapsed + diff);
            }
            return parsed;
         }
       } catch (parseError) {
         console.error(`Error parsing state for ${key}:`, parseError);
-        // If parsing fails, return null to force default state
         return null;
       }
     }
@@ -399,8 +430,9 @@ const VENT_SPECS = [
     ],
     features: [
       'Brumisation (16 L/min)',
-      'Mousse HF (Fois. 400-800)',
+      'Mousse HF (Fois. 800)',
       'Inclinaison réglable',
+      '⚠️ GAZ D\'ÉCHAPPEMENT DANS VEINE D\'AIR',
       'Très puissant'
     ],
     usage: 'VPP, Brumisation, Mousse'
@@ -461,9 +493,9 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
     setEngagementARI(null); setWindDir(null);
   };
 
-  const getPStr = (p: typeof pmtt) => p.naturel ? 'Naturel' : p.force ? 'Forcé' : 'N/D';
-  const getMStr = (p: typeof pmtt) => p.horizontale && p.verticale ? "Mixte" : p.horizontale ? "Horizontale" : p.verticale ? "Verticale" : "N/D";
-  const getTStr = (p: typeof pmtt) => p.vpp && p.depression ? "VPP+Dépr." : p.vpp ? "V.P.P" : p.depression ? "Dépr." : "N/D";
+  const getPStr = (p: any) => p?.naturel ? 'Naturel' : p?.force ? 'Forcé' : 'N/D';
+  const getMStr = (p: any) => p?.horizontale && p?.verticale ? "Mixte" : p?.horizontale ? "Horizontale" : p?.verticale ? "Verticale" : "N/D";
+  const getTStr = (p: any) => p?.vpp && p?.depression ? "VPP+Dépr." : p?.vpp ? "V.P.P" : p?.depression ? "Dépr." : "N/D";
 
   if (view === 'menu') {
     return (
@@ -499,45 +531,45 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 
   if (view === 'specs') {
     return (
-      <div className="flex flex-col flex-1 bg-[#1a237e] text-blue-100 p-4 sm:p-6 font-mono animate-[fadeIn_0.5s_ease-out] relative overflow-hidden w-full">
+      <div className="flex flex-col flex-1 bg-[#0a0f2b] text-blue-100 p-4 sm:p-6 font-sans animate-[fadeIn_0.5s_ease-out] relative overflow-hidden w-full">
         {/* Background Grid Effect */}
-        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+        <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.05) 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
         
         <div className="relative z-10 flex flex-col h-full max-w-4xl mx-auto w-full space-y-6">
-          <div className="flex justify-between items-center border-b-2 border-blue-400/30 pb-4">
-              <div className="flex items-center gap-3">
-                <button onClick={() => setView('menu')} className="p-2 bg-blue-900/50 border border-blue-400/30 rounded hover:bg-blue-800 transition-colors"><ChevronLeft className="w-6 h-6 text-blue-300" /></button>
-                <div className="bg-blue-500/20 p-2 rounded border border-blue-400/50"><FileText className="w-6 h-6 text-blue-300" /></div>
-                <div><h1 className="text-2xl font-black uppercase tracking-widest text-blue-300">Spécificités</h1><p className="text-[10px] font-bold text-blue-400/60 uppercase tracking-widest">Matériel Ventilation</p></div>
+          <div className="flex justify-between items-center border-b border-blue-400/20 pb-4">
+              <div className="flex items-center gap-4">
+                <button onClick={() => setView('menu')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all shadow-lg"><ChevronLeft className="w-6 h-6 text-white" /></button>
+                <div>
+                  <h1 className="text-2xl font-black uppercase tracking-tighter text-white">Spécificités</h1>
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em]">Matériel Ventilation</p>
+                </div>
               </div>
           </div>
           
-          <div className="flex-1 overflow-y-auto space-y-6 pr-1 hide-scrollbar">
+          <div className="flex-1 overflow-y-auto space-y-6 pr-1 hide-scrollbar pb-10">
             {VENT_SPECS.map(spec => (
-              <div key={spec.id} className="bg-blue-900/40 border-2 border-blue-400/20 rounded-xl overflow-hidden relative group backdrop-blur-sm">
+              <div key={spec.id} className="bg-white/[0.03] backdrop-blur-md border border-white/10 rounded-[2rem] overflow-hidden relative group shadow-2xl">
                 {/* Header */}
-                <div className="p-6 flex items-start justify-between gap-4 relative z-10 border-b border-blue-400/10">
-                  <div className="flex items-center gap-5">
-                    <div className={`w-16 h-16 rounded-xl bg-blue-950/50 flex items-center justify-center border border-blue-400/20 ${spec.color} shadow-lg`}>
-                      <spec.icon size={32} />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-black uppercase text-white tracking-tight">{spec.name}</h3>
-                      <p className={`text-xs font-bold uppercase tracking-widest ${spec.color} mt-1`}>{spec.type}</p>
-                    </div>
+                <div className="p-6 flex items-center gap-5 border-b border-white/5 bg-white/[0.02]">
+                  <div className={`w-16 h-16 rounded-2xl bg-black/40 flex items-center justify-center border border-white/10 ${spec.color} shadow-inner`}>
+                    <spec.icon size={32} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black uppercase text-white tracking-tight leading-none">{spec.name}</h3>
+                    <p className={`text-[10px] font-black uppercase tracking-widest ${spec.color} mt-2 opacity-80`}>{spec.type}</p>
                   </div>
                 </div>
 
                 {/* Warning for MT296 */}
                 {spec.id === 'mt296' && (
-                  <div className="mx-6 mt-4 bg-red-900/40 border border-red-500/50 p-4 rounded-xl flex items-start gap-3">
-                    <AlertTriangle className="text-red-400 shrink-0 mt-0.5" size={20} />
+                  <div className="mx-6 mt-6 bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex items-start gap-4">
+                    <div className="p-2 bg-red-500/20 rounded-lg text-red-500"><AlertTriangle size={20} /></div>
                     <div>
-                      <p className="text-xs font-black uppercase text-red-400 mb-1">Attention : Gaz d'échappement</p>
-                      <p className="text-[11px] text-red-200/80 leading-relaxed">
+                      <p className="text-xs font-black uppercase text-red-500 mb-1">Attention : Gaz d'échappement</p>
+                      <p className="text-[11px] text-red-200/70 leading-relaxed font-medium">
                         Ce ventilateur thermique produit du monoxyde de carbone (CO). 
-                        <strong className="text-red-200"> Ne jamais l'utiliser dans un volume clos ou mal ventilé.</strong> 
-                        Les gaz d'échappement sont propulsés dans la veine d'air.
+                        <strong className="text-red-400"> Les gaz sont propulsés dans la veine d'air.</strong> 
+                        Usage extérieur uniquement pour soufflage.
                       </p>
                     </div>
                   </div>
@@ -547,12 +579,15 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
                   {/* Stats */}
                   <div className="space-y-4">
-                    <h4 className="text-[10px] font-black uppercase text-blue-400/60 tracking-widest border-b border-blue-400/10 pb-2">Performances</h4>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                      <h4 className="text-[10px] font-black uppercase text-white/40 tracking-widest">Performances</h4>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       {spec.stats.map((stat, i) => (
-                        <div key={i} className="bg-blue-950/40 p-3 rounded-lg border border-blue-400/10 hover:border-blue-400/30 transition-colors">
-                          <p className="text-[9px] text-blue-300/60 uppercase font-bold mb-1">{stat.label}</p>
-                          <p className="text-base font-black text-white">{stat.value}</p>
+                        <div key={i} className="bg-black/20 p-4 rounded-2xl border border-white/5 hover:border-white/20 transition-all">
+                          <p className="text-[9px] text-white/30 uppercase font-black mb-1">{stat.label}</p>
+                          <p className="text-lg font-black text-white tracking-tight">{stat.value}</p>
                         </div>
                       ))}
                     </div>
@@ -560,19 +595,22 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 
                   {/* Features */}
                   <div className="space-y-4">
-                    <h4 className="text-[10px] font-black uppercase text-blue-400/60 tracking-widest border-b border-blue-400/10 pb-2">Caractéristiques</h4>
-                    <ul className="space-y-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                      <h4 className="text-[10px] font-black uppercase text-white/40 tracking-widest">Caractéristiques</h4>
+                    </div>
+                    <ul className="space-y-3">
                       {spec.features.map((feat, i) => (
-                        <li key={i} className="text-xs text-blue-100/80 flex items-start gap-3 font-medium">
-                          <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${spec.color.replace('text-', 'bg-')}`} />
+                        <li key={i} className="text-[11px] text-white/70 flex items-start gap-3 font-bold leading-tight">
+                          <div className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${spec.color.replace('text-', 'bg-')} shadow-[0_0_8px_currentColor]`} />
                           {feat}
                         </li>
                       ))}
                     </ul>
-                    <div className="pt-4 mt-2">
-                      <div className="bg-blue-950/40 p-3 rounded-lg border border-blue-400/10">
-                          <span className="text-[9px] font-black uppercase text-blue-400/40 block mb-1">Usage Recommandé</span>
-                          <span className="text-xs font-bold uppercase text-blue-200 tracking-wide">{spec.usage}</span>
+                    <div className="pt-4">
+                      <div className="bg-blue-500/10 p-4 rounded-2xl border border-blue-500/20">
+                          <span className="text-[9px] font-black uppercase text-blue-400/60 block mb-1">Usage Recommandé</span>
+                          <span className="text-xs font-black uppercase text-blue-200 tracking-wider">{spec.usage}</span>
                       </div>
                     </div>
                   </div>
@@ -823,8 +861,13 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
             <button onClick={()=>{
               const matTxt = Object.entries(materials).filter(([_, q]) => (q as number) > 0).map(([k, q]) => `${VENT_MATERIAL_LABELS[k]}: ${q}`).join(', ') || 'Aucun';
               const historyTxt = history.length > 0 ? '\n\nHISTORIQUE:\n' + history.map(h => `Phase ${h.phase}: ${h.duration} (${getPStr(h.pmtt)}/${getTStr(h.pmtt)})`).join('\n') : '';
-              const txt = `RÉCAP VO SDIS 77\n\nDébut: ${startTime}\nPMTT: ${getPStr(pmtt)} / ${getMStr(pmtt)} / Défensif / ${getTStr(pmtt)}\nEngagement: ${engagementARI}\nIncidence Foyer: AUCUNE\nMatériel: ${matTxt}${historyTxt}`;
-              navigator.clipboard.writeText(txt); setShowPMTTModal(false);
+              const txt = `RÉCAP VO SDIS 77\n\nDébut: ${startTime || 'N/A'}\nPMTT: ${getPStr(pmtt)} / ${getMStr(pmtt)} / Défensif / ${getTStr(pmtt)}\nEngagement: ${engagementARI || 'N/A'}\nIncidence Foyer: AUCUNE\nMatériel: ${matTxt}${historyTxt}`;
+              try {
+                navigator.clipboard.writeText(txt);
+              } catch (err) {
+                console.error("Failed to copy:", err);
+              }
+              setShowPMTTModal(false);
             }} className="w-full mt-6 py-4 bg-emerald-500 text-black rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20">Copier le rapport</button>
           </div>
         </div>
@@ -1199,85 +1242,100 @@ export default function App() {
   const isVentActive = ventState?.isVentilating;
 
   return (
-    <div className="min-h-[100dvh] flex flex-col transition-all duration-700 bg-[#050505] text-white">
-      {route === 'home' ? (
-        <div className="flex flex-col flex-1 p-6 items-center justify-center animate-fadeIn relative">
-          <div className="text-center mb-10 relative">
-            <div className="absolute inset-0 bg-red-600/20 blur-[100px] rounded-full pointer-events-none" />
-            <div className="relative">
-              <h1 className="text-7xl sm:text-9xl font-black tracking-tighter uppercase drop-shadow-2xl">
-                <span className="text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400">OPS</span>
-                <span className="text-red-600">FLOW</span>
-              </h1>
-            </div>
-            <div className="flex items-center justify-center gap-4 mt-6">
-              <div className="h-[1px] w-12 bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-50" />
-              <div className="px-4 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 backdrop-blur-md">
-                <p className="font-bold tracking-[0.3em] uppercase text-[10px] text-red-400">Portail Tactique Opérationnel</p>
+    <ErrorBoundary>
+      <div className="min-h-[100dvh] flex flex-col transition-all duration-700 bg-[#050505] text-white">
+        {route === 'home' ? (
+          <div className="flex flex-col flex-1 p-6 items-center justify-center animate-fadeIn relative">
+            <div className="text-center mb-10 relative">
+              <div className="absolute inset-0 bg-red-600/20 blur-[100px] rounded-full pointer-events-none" />
+              <div className="relative">
+                <h1 className="text-7xl sm:text-9xl font-black tracking-tighter uppercase drop-shadow-2xl">
+                  <span className="text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400">OPS</span>
+                  <span className="text-red-600">FLOW</span>
+                </h1>
               </div>
-              <div className="h-[1px] w-12 bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-50" />
+              <div className="flex items-center justify-center gap-4 mt-6">
+                <div className="h-[1px] w-12 bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-50" />
+                <div className="px-4 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 backdrop-blur-md">
+                  <p className="font-bold tracking-[0.3em] uppercase text-[10px] text-red-400">Portail Tactique Opérationnel</p>
+                </div>
+                <div className="h-[1px] w-12 bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-50" />
+              </div>
             </div>
-          </div>
 
-          {(isFoamActive || isVentActive) && (
-            <div className="w-full max-w-md mb-8 grid grid-cols-1 gap-3 animate-fadeIn">
-              {isFoamActive && (
-                <button onClick={() => navigateTo('foam-live')} className="bg-orange-500/10 border border-orange-500/40 p-4 rounded-2xl flex items-center justify-between group hover:bg-orange-500/20 transition-all">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400 animate-pulse"><Flame size={20}/></div>
-                    <div className="text-left">
-                      <p className="text-[10px] font-black uppercase text-orange-400 tracking-widest">Mousse en cours</p>
-                      <p className="text-xl font-mono font-black text-white">{safeFormatTime(foamState.elapsedSeconds)}</p>
+            {(isFoamActive || isVentActive) && (
+              <div className="w-full max-w-md mb-8 grid grid-cols-1 gap-3 animate-fadeIn">
+                {isFoamActive && (
+                  <button onClick={() => navigateTo('foam-live')} className="bg-orange-500/10 border border-orange-500/40 p-4 rounded-2xl flex items-center justify-between group hover:bg-orange-500/20 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400 animate-pulse"><Flame size={20}/></div>
+                      <div className="text-left">
+                        <p className="text-[10px] font-black uppercase text-orange-400 tracking-widest">Mousse en cours</p>
+                        <p className="text-xl font-mono font-black text-white">{safeFormatTime(foamState?.elapsedSeconds || 0)}</p>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight className="text-orange-400/50 group-hover:translate-x-1 transition-transform"/>
-                </button>
-              )}
-              {isVentActive && (
-                <button onClick={() => navigateTo('ventilation')} className="bg-emerald-500/10 border border-emerald-500/40 p-4 rounded-2xl flex items-center justify-between group hover:bg-emerald-500/20 transition-all">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400 animate-pulse"><Wind size={20}/></div>
-                    <div className="text-left">
-                      <p className="text-[10px] font-black uppercase text-emerald-400 tracking-widest">Ventilation en cours</p>
-                      <p className="text-xl font-mono font-black text-white">{safeFormatTime(ventState.elapsedSeconds)}</p>
+                    <ChevronRight className="text-orange-400/50 group-hover:translate-x-1 transition-transform"/>
+                  </button>
+                )}
+                {isVentActive && (
+                  <button onClick={() => navigateTo('ventilation')} className="bg-emerald-500/10 border border-emerald-500/40 p-4 rounded-2xl flex items-center justify-between group hover:bg-emerald-500/20 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400 animate-pulse"><Wind size={20}/></div>
+                      <div className="text-left">
+                        <p className="text-[10px] font-black uppercase text-emerald-400 tracking-widest">Ventilation en cours</p>
+                        <p className="text-xl font-mono font-black text-white">{safeFormatTime(ventState?.elapsedSeconds || 0)}</p>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight className="text-emerald-400/50 group-hover:translate-x-1 transition-transform"/>
-                </button>
-              )}
+                    <ChevronRight className="text-emerald-400/50 group-hover:translate-x-1 transition-transform"/>
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="w-full max-w-md space-y-4">
+              <button onClick={()=>navigateTo('ventilation')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
+                <div className="p-5 bg-emerald-500/10 rounded-2xl text-emerald-400 group-hover:scale-110 transition-all"><Wind size={40}/></div>
+                <div className="text-left"><h2 className="text-2xl font-black uppercase">Ventilation</h2><p className="text-[10px] uppercase font-bold text-white/30">Assistant PMTT & Séquences</p></div>
+              </button>
+              <button onClick={()=>navigateTo('foam-menu')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
+                <div className="p-5 bg-orange-500/10 rounded-2xl text-orange-400 group-hover:scale-110 transition-all"><Database size={40}/></div>
+                <div className="text-left"><h2 className="text-2xl font-black uppercase">Mousse</h2><p className="text-[10px] uppercase font-bold text-white/30">Calculateur & Autonomie</p></div>
+              </button>
+              
+              <button 
+                onClick={() => window.open('https://script.google.com/macros/s/AKfycbxKzSH9P3aT_CdSlX9Us1XImSXooX6xQJGOytwmzo5CJql3icyhSLpIvZb5MuSl-F-r1w/exec', '_blank')} 
+                className="w-full bg-slate-500/5 backdrop-blur-xl p-3 rounded-xl border border-slate-500/20 flex items-center gap-3 group hover:bg-slate-500/10 transition-all"
+              >
+                <div className="p-2 bg-slate-500/10 rounded-lg text-slate-400 group-hover:scale-110 transition-all">
+                  <ClipboardList size={20}/>
+                </div>
+                <div className="text-left">
+                  <h2 className="text-sm font-black uppercase">Saisir un RETEX</h2>
+                  <p className="text-[7px] uppercase font-bold text-white/20">Retours d'Expérience Opérationnels</p>
+                </div>
+              </button>
             </div>
-          )}
-
-          <div className="w-full max-w-md space-y-4">
-            <button onClick={()=>navigateTo('ventilation')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-              <div className="p-5 bg-emerald-500/10 rounded-2xl text-emerald-400 group-hover:scale-110 transition-all"><Wind size={40}/></div>
-              <div className="text-left"><h2 className="text-2xl font-black uppercase">Ventilation</h2><p className="text-[10px] uppercase font-bold text-white/30">Assistant PMTT & Séquences</p></div>
-            </button>
-            <button onClick={()=>navigateTo('foam-menu')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-              <div className="p-5 bg-orange-500/10 rounded-2xl text-orange-400 group-hover:scale-110 transition-all"><Database size={40}/></div>
-              <div className="text-left"><h2 className="text-2xl font-black uppercase">Mousse</h2><p className="text-[10px] uppercase font-bold text-white/30">Calculateur & Autonomie</p></div>
-            </button>
+            <div className="mt-auto pt-10 text-[8px] font-mono text-white/20 uppercase tracking-[0.3em]">Outils numérique par <span className="text-white font-bold">Cucalon & Decarreaux</span></div>
           </div>
-          <div className="mt-auto pt-10 text-[8px] font-mono text-white/20 uppercase tracking-[0.3em]">Outils numérique par <span className="text-white font-bold">Cucalon & Decarreaux</span></div>
-        </div>
-      ) : route === 'foam-menu' ? (
-        <FoamMenu onNavigate={navigateTo} onBack={()=>window.history.back()} />
-      ) : route === 'foam-live' ? (
-        <FoamApp onBack={()=>window.history.back()} />
-      ) : route === 'surface' ? (
-        <SurfaceApp onBack={()=>window.history.back()} />
-      ) : (
-        <VentilationApp onBack={()=>window.history.back()} />
-      )}
+        ) : route === 'foam-menu' ? (
+          <FoamMenu onNavigate={navigateTo} onBack={()=>window.history.back()} />
+        ) : route === 'foam-live' ? (
+          <FoamApp onBack={()=>window.history.back()} />
+        ) : route === 'surface' ? (
+          <SurfaceApp onBack={()=>window.history.back()} />
+        ) : (
+          <VentilationApp onBack={()=>window.history.back()} />
+        )}
 
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
-        .animate-spin-slow { animation: spin 10s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
-    </div>
+        <style>{`
+          @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+          .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+          .animate-spin-slow { animation: spin 10s linear infinite; }
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          .hide-scrollbar::-webkit-scrollbar { display: none; }
+          .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        `}</style>
+      </div>
+    </ErrorBoundary>
   );
 }
