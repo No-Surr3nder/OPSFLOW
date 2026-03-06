@@ -217,7 +217,19 @@ function FoamApp({ onBack }: { onBack: () => void }) {
               <div className="bg-gradient-to-br from-orange-500 to-red-600 p-2.5 rounded-xl"><Flame className="w-6 h-6 text-white" /></div>
               <div><h1 className="text-xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Calcul Mousse</h1><p className="text-[9px] font-bold text-orange-400 uppercase">SDIS 77</p></div>
             </div>
-            <button onClick={() => setStock({ water: 3000, foam: 100, maxWater: 3000, maxFoam: 100, isWaterSupplied: false })} className="p-3 bg-white/5 rounded-xl border border-white/10"><RefreshCcw className="w-5 h-5 text-white/60" /></button>
+            <button onClick={() => setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false })} className="p-3 bg-white/5 rounded-xl border border-white/10"><RefreshCcw className="w-5 h-5 text-white/60" /></button>
+          </div>
+
+          {/* Aperçu en temps réel des performances */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl text-center">
+              <p className="text-[8px] font-black text-emerald-400 uppercase mb-1">Autonomie Estimeé</p>
+              <p className="text-xl font-mono font-black text-white">{formatTime(limitingAutonomy * 60)}</p>
+            </div>
+            <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-2xl text-center">
+              <p className="text-[8px] font-black text-orange-400 uppercase mb-1">Production Mousse</p>
+              <p className="text-xl font-mono font-black text-white">{safeFixed((flowRate * expansionRate) / 1000, 1)} <span className="text-[10px]">m³/min</span></p>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-5 pr-1 hide-scrollbar">
@@ -308,7 +320,19 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                 <div className="flex items-center gap-2 text-orange-300 uppercase text-[10px] font-black"><Wind size={16}/> Foisonnement</div>
                 <div className="flex items-center gap-2 mb-2">
                   <button onClick={() => setExpansionRate(r => Math.max(0, r - 10))} className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center"><Minus size={16}/></button>
-                  <div className="flex-1 bg-black/40 rounded-xl h-10 flex items-center justify-center font-mono text-xl font-black">x{expansionRate}</div>
+                  <div className="flex-1 bg-black/40 rounded-xl h-10 flex items-center justify-center overflow-hidden">
+                    <input 
+                      type="number" 
+                      value={expansionRate || ''} 
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setExpansionRate(val);
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full h-full bg-transparent text-center font-mono text-xl font-black outline-none text-white"
+                    />
+                    <span className="absolute right-12 text-[9px] opacity-40 font-black">x</span>
+                  </div>
                   <button onClick={() => setExpansionRate(r => r + 10)} className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center"><Plus size={16}/></button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">{EXPANSION_RATES.map(e => (<button key={e.value} onClick={() => setExpansionRate(e.value)} className={`py-2 rounded-xl border text-[9px] font-black uppercase ${expansionRate === e.value ? 'bg-orange-500 border-orange-400' : 'bg-white/5 border-white/10'}`}>{e.label}<span className="block opacity-60">x{e.value}</span></button>))}</div>
@@ -347,13 +371,17 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                 <div className="bg-orange-950/20 p-5 rounded-3xl border border-orange-500/30 text-center"><p className="text-[9px] font-black text-orange-400/60 uppercase">Mousse Produit</p><p className="text-4xl font-mono font-black">{safeFixed(totalFoamProduced, 0)} <span className="text-sm">m³</span></p></div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
                   <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Débit Solution</span><span className="text-white text-xl">{flowRate} L/min</span></div>
                   <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
                 </div>
                 <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
                   <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Taux d'injection</span><span className="text-orange-400 text-xl">{concentration}%</span></div>
+                  <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
+                </div>
+                <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Foisonnement</span><span className="text-blue-400 text-xl">x{expansionRate}</span></div>
                   <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
                 </div>
               </div>
