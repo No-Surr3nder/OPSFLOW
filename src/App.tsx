@@ -141,7 +141,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
         const parsed = JSON.parse(saved);
         // Validation stricte de la structure
         if (
-          typeof parsed === 'object' &&
+          parsed && typeof parsed === 'object' &&
           typeof parsed.water === 'number' &&
           typeof parsed.foam === 'number' &&
           typeof parsed.maxWater === 'number' &&
@@ -154,8 +154,8 @@ function FoamApp({ onBack }: { onBack: () => void }) {
     } catch (e) {
       console.error("Erreur chargement stock", e);
     }
-    // Valeurs par défaut si échec ou pas de sauvegarde
-    return { water: 3000, foam: 100, maxWater: 3000, maxFoam: 100, isWaterSupplied: false };
+    // Valeurs par défaut : FPT standard = 3000L eau / 200L additif
+    return { water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false };
   });
 
   useEffect(() => { 
@@ -225,9 +225,21 @@ function FoamApp({ onBack }: { onBack: () => void }) {
               <div className="bg-white/[0.02] backdrop-blur-md p-5 rounded-3xl border border-white/10 space-y-4">
                 <div className="flex items-center gap-2 text-blue-400 uppercase text-[10px] font-black"><Droplets size={16}/> Eau (Hydraulique)</div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setStock((s: any) => ({...s, maxWater: Math.max(0, s.maxWater-100), water: Math.max(0, s.water-100)}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Minus/></button>
-                  <div className="flex-1 bg-black/40 rounded-xl h-12 flex items-center justify-center font-mono text-2xl font-black">{stock.maxWater}L</div>
-                  <button onClick={() => setStock((s: any) => ({...s, maxWater: s.maxWater+100, water: s.water+100}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Plus/></button>
+                  <button onClick={() => setStock((s: any) => ({...s, maxWater: Math.max(0, s.maxWater-100), water: Math.max(0, s.water-100)}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center active:bg-white/10"><Minus/></button>
+                  <div className="flex-1 bg-black/40 rounded-xl h-12 flex items-center justify-center overflow-hidden">
+                    <input 
+                      type="number" 
+                      value={stock.maxWater || ''} 
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setStock((s: any) => ({...s, maxWater: val, water: val}));
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full h-full bg-transparent text-center font-mono text-2xl font-black outline-none text-white"
+                    />
+                    <span className="absolute right-16 text-[10px] opacity-40 font-black">L</span>
+                  </div>
+                  <button onClick={() => setStock((s: any) => ({...s, maxWater: s.maxWater+100, water: s.water+100}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center active:bg-white/10"><Plus/></button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setStock((s: any) => ({...s, maxWater: 3000, water: 3000}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxWater === 3000 ? 'bg-blue-600 border-blue-400' : 'bg-white/5 border-white/10'}`}>FPT (3000L)</button>
@@ -245,9 +257,21 @@ function FoamApp({ onBack }: { onBack: () => void }) {
               <div className="bg-white/[0.02] backdrop-blur-md p-5 rounded-3xl border border-white/10 space-y-4">
                 <div className="flex items-center gap-2 text-orange-400 uppercase text-[10px] font-black"><Database size={16}/> Additif</div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: Math.max(0, s.maxFoam-10), foam: Math.max(0, s.foam-10)}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Minus/></button>
-                  <div className="flex-1 bg-black/40 rounded-xl h-12 flex items-center justify-center font-mono text-2xl font-black">{stock.maxFoam}L</div>
-                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: s.maxFoam+10, foam: s.foam+10}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Plus/></button>
+                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: Math.max(0, s.maxFoam-10), foam: Math.max(0, s.foam-10)}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center active:bg-white/10"><Minus/></button>
+                  <div className="flex-1 bg-black/40 rounded-xl h-12 flex items-center justify-center overflow-hidden">
+                    <input 
+                      type="number" 
+                      value={stock.maxFoam || ''} 
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setStock((s: any) => ({...s, maxFoam: val, foam: val}));
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full h-full bg-transparent text-center font-mono text-2xl font-black outline-none text-white"
+                    />
+                    <span className="absolute right-16 text-[10px] opacity-40 font-black">L</span>
+                  </div>
+                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: s.maxFoam+10, foam: s.foam+10}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center active:bg-white/10"><Plus/></button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setStock((s: any) => ({...s, maxFoam: 200, foam: 200}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxFoam === 200 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Bio for N (FPT)</button>
@@ -912,16 +936,16 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
     if (fireType === 'solid') {
       setActionType('wetting');
       setProduct('biofor');
-      if (rate > 2) setRate(1.5); // Default rate for solids is often lower
+      setRate(1.5); // Default rate for solids
     } else if (actionType === 'wetting') {
       setProduct('biofor'); // Mouillant = Bio For N uniquement
-      if (rate > 2) setRate(1);
+      setRate(1); // Default rate for wetting
     } else if (fireType === 'polar') {
       setProduct('ecopol'); // Polaire = Ecopol only
-      setRate(5);
+      setRate(5); // Default rate for polar
     } else {
       // Hydrocarbure + Extinction
-      setRate(3);
+      setRate(3); // Default rate for hydro
     }
   }, [fireType, actionType]);
 
@@ -985,7 +1009,15 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
               <div className="space-y-1">
                 <label className="text-[10px] uppercase text-blue-400 font-bold">{shape === 'rect' ? 'Longueur (L)' : 'Diamètre (D)'}</label>
                 <div className="flex items-center gap-2">
-                  <input type="number" value={dim1 || ''} onChange={(e) => setDim1(parseFloat(e.target.value) || 0)} className="flex-1 bg-blue-950/50 border border-blue-400/30 rounded p-3 text-xl font-bold text-white focus:border-blue-400 outline-none" placeholder="0" />
+                  <input 
+                    type="number" 
+                    inputMode="decimal"
+                    value={dim1 || ''} 
+                    onChange={(e) => setDim1(parseFloat(e.target.value.replace(',', '.')) || 0)} 
+                    onFocus={(e) => e.target.select()}
+                    className="flex-1 bg-blue-950/50 border border-blue-400/30 rounded p-3 text-xl font-bold text-white focus:border-blue-400 outline-none" 
+                    placeholder="0" 
+                  />
                   <span className="text-blue-400 font-bold">m</span>
                 </div>
               </div>
@@ -993,7 +1025,15 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                 <div className="space-y-1 animate-fadeIn">
                   <label className="text-[10px] uppercase text-blue-400 font-bold">Largeur (l)</label>
                   <div className="flex items-center gap-2">
-                    <input type="number" value={dim2 || ''} onChange={(e) => setDim2(parseFloat(e.target.value) || 0)} className="flex-1 bg-blue-950/50 border border-blue-400/30 rounded p-3 text-xl font-bold text-white focus:border-blue-400 outline-none" placeholder="0" />
+                    <input 
+                      type="number" 
+                      inputMode="decimal"
+                      value={dim2 || ''} 
+                      onChange={(e) => setDim2(parseFloat(e.target.value.replace(',', '.')) || 0)} 
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 bg-blue-950/50 border border-blue-400/30 rounded p-3 text-xl font-bold text-white focus:border-blue-400 outline-none" 
+                      placeholder="0" 
+                    />
                     <span className="text-blue-400 font-bold">m</span>
                   </div>
                 </div>
@@ -1002,7 +1042,15 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
               <div className="space-y-1 pt-2 border-t border-blue-400/10">
                 <label className="text-[10px] uppercase text-blue-400 font-bold">Hauteur (H) <span className="opacity-50">- Optionnel (Vol.)</span></label>
                 <div className="flex items-center gap-2">
-                  <input type="number" value={height || ''} onChange={(e) => setHeight(parseFloat(e.target.value) || 0)} className="flex-1 bg-blue-950/50 border border-blue-400/30 rounded p-3 text-xl font-bold text-white focus:border-blue-400 outline-none" placeholder="0" />
+                  <input 
+                    type="number" 
+                    inputMode="decimal"
+                    value={height || ''} 
+                    onChange={(e) => setHeight(parseFloat(e.target.value.replace(',', '.')) || 0)} 
+                    onFocus={(e) => e.target.select()}
+                    className="flex-1 bg-blue-950/50 border border-blue-400/30 rounded p-3 text-xl font-bold text-white focus:border-blue-400 outline-none" 
+                    placeholder="0" 
+                  />
                   <span className="text-blue-400 font-bold">m</span>
                 </div>
               </div>
@@ -1124,7 +1172,16 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setRate(Math.max(1, rate - 0.5))} className="p-2 bg-blue-950/50 border border-blue-400/30 rounded-lg text-blue-300 hover:bg-blue-900 transition-colors"><Minus size={16}/></button>
-                  <input type="range" min="1" max="10" step="0.5" value={rate} onChange={(e) => setRate(parseFloat(e.target.value))} className="flex-1 h-2 bg-blue-950 rounded-lg appearance-none cursor-pointer accent-blue-400" />
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="10" 
+                    step="0.5" 
+                    value={rate} 
+                    onInput={(e) => setRate(parseFloat((e.target as HTMLInputElement).value))}
+                    onChange={(e) => setRate(parseFloat(e.target.value))} 
+                    className="flex-1 h-2 bg-blue-950 rounded-lg appearance-none cursor-pointer accent-blue-400" 
+                  />
                   <button onClick={() => setRate(Math.min(10, rate + 0.5))} className="p-2 bg-blue-950/50 border border-blue-400/30 rounded-lg text-blue-300 hover:bg-blue-900 transition-colors"><Plus size={16}/></button>
                 </div>
               </div>
