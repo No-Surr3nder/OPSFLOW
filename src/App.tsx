@@ -885,19 +885,27 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 // MODULE 3 : CALCULATEUR SURFACE & MOYENS
 // ==========================================
 function SurfaceApp({ onBack }: { onBack: () => void }) {
-  const [shape, setShape] = useState<'rect' | 'circle'>('rect');
-  const [dim1, setDim1] = useState<number>(0); // Longueur ou Diamètre
-  const [dim2, setDim2] = useState<number>(0); // Largeur
-  const [height, setHeight] = useState<number>(0); // Hauteur pour volume
+  const savedState = React.useRef(loadPersistedState('sdis77_surface_state')).current;
+  const [shape, setShape] = useState<'rect' | 'circle'>(savedState?.shape || 'rect');
+  const [dim1, setDim1] = useState<number>(savedState?.dim1 || 0); // Longueur ou Diamètre
+  const [dim2, setDim2] = useState<number>(savedState?.dim2 || 0); // Largeur
+  const [height, setHeight] = useState<number>(savedState?.height || 0); // Hauteur pour volume
   
   // SDIS 77 Logic
-  const [fireType, setFireType] = useState<'hydro' | 'polar' | 'solid'>('hydro');
-  const [actionType, setActionType] = useState<'wetting' | 'extinction'>('extinction');
-  const [product, setProduct] = useState<'biofor' | 'ecopol'>('biofor');
-  const [rate, setRate] = useState<number>(3); // Taux application L/m²/min
-  const [solidConcentration, setSolidConcentration] = useState<number>(0.5); // 0.1 to 1%
+  const [fireType, setFireType] = useState<'hydro' | 'polar' | 'solid'>(savedState?.fireType || 'hydro');
+  const [actionType, setActionType] = useState<'wetting' | 'extinction'>(savedState?.actionType || 'extinction');
+  const [product, setProduct] = useState<'biofor' | 'ecopol'>(savedState?.product || 'biofor');
+  const [rate, setRate] = useState<number>(savedState?.rate || 3); // Taux application L/m²/min
+  const [solidConcentration, setSolidConcentration] = useState<number>(savedState?.solidConcentration || 0.5); // 0.1 to 1%
   
   const duration = 20; // Durée fixe 20 min
+
+  // Persistance de l'état
+  useEffect(() => {
+    localStorage.setItem('sdis77_surface_state', JSON.stringify({
+      shape, dim1, dim2, height, fireType, actionType, product, rate, solidConcentration
+    }));
+  }, [shape, dim1, dim2, height, fireType, actionType, product, rate, solidConcentration]);
 
   // Update defaults when Fire Type or Action Type changes
   useEffect(() => {
@@ -1200,7 +1208,7 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                     <span className="text-[9px] text-blue-400/60">Haut Foisonnement x500</span>
                   </div>
                   <span className="text-lg font-black text-white">
-                    {Math.ceil((surface * height) / ((300 * 500) / 1000))} <span className="text-xs font-bold text-blue-400">min</span>
+                    {isFinite((surface * height) / ((300 * 500) / 1000)) ? Math.ceil((surface * height) / ((300 * 500) / 1000)) : 0} <span className="text-xs font-bold text-blue-400">min</span>
                   </span>
                 </div>
                 <div className="flex justify-between items-center p-2 bg-blue-950/40 rounded-lg border border-blue-400/10">
@@ -1209,7 +1217,7 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                     <span className="text-[9px] text-blue-400/60">Haut Foisonnement x300</span>
                   </div>
                   <span className="text-lg font-black text-white">
-                    {Math.ceil((surface * height) / ((300 * 300) / 1000))} <span className="text-xs font-bold text-blue-400">min</span>
+                    {isFinite((surface * height) / ((300 * 300) / 1000)) ? Math.ceil((surface * height) / ((300 * 300) / 1000)) : 0} <span className="text-xs font-bold text-blue-400">min</span>
                   </span>
                 </div>
               </div>
@@ -1398,14 +1406,14 @@ export default function App() {
               
               <button 
                 onClick={() => window.open('https://script.google.com/macros/s/AKfycbxKzSH9P3aT_CdSlX9Us1XImSXooX6xQJGOytwmzo5CJql3icyhSLpIvZb5MuSl-F-r1w/exec', '_blank')} 
-                className="w-full bg-slate-500/5 backdrop-blur-xl p-3 rounded-xl border border-slate-500/20 flex items-center justify-center gap-3 group hover:bg-slate-500/10 transition-all"
+                className="w-full bg-slate-500/10 backdrop-blur-xl p-4 rounded-[2rem] border border-slate-500/30 flex flex-col items-center justify-center gap-1 group hover:bg-slate-500/20 transition-all shadow-lg"
               >
-                <div className="p-2 bg-slate-500/10 rounded-lg text-slate-400 group-hover:scale-110 transition-all">
-                  <ClipboardList size={20}/>
+                <div className="text-slate-400 group-hover:scale-110 transition-all mb-1">
+                  <ClipboardList size={24}/>
                 </div>
                 <div className="text-center">
-                  <h2 className="text-sm font-black uppercase">Saisir un RETEX</h2>
-                  <p className="text-[7px] uppercase font-bold text-white/20">Retours d'Expérience Opérationnels</p>
+                  <h2 className="text-sm font-black uppercase tracking-widest">Saisir un RETEX</h2>
+                  <p className="text-[8px] uppercase font-bold text-white/30">Retours d'Expérience Opérationnels</p>
                 </div>
               </button>
             </div>
