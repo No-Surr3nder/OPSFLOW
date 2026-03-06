@@ -173,6 +173,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
   const autonomyFoam = actualFoamFlow > 0 ? stock.foam / actualFoamFlow : Infinity;
   const autonomyWater = stock.isWaterSupplied ? Infinity : (actualWaterFlow > 0 ? stock.water / actualWaterFlow : Infinity);
   const limitingAutonomy = Math.min(autonomyFoam, autonomyWater);
+  const limitingFactor = autonomyFoam < autonomyWater ? "ADDITIF" : "EAU";
   
   // Sécurisation de la production de mousse
   let totalFoamProduced = 0;
@@ -249,8 +250,8 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   <button onClick={() => setStock((s: any) => ({...s, maxFoam: s.maxFoam+10, foam: s.foam+10}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Plus/></button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: 100, foam: 100}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxFoam === 100 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Bio for N (FPT)</button>
-                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: 200, foam: 200}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxFoam === 200 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Ecopole</button>
+                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: 200, foam: 200}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxFoam === 200 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Bio for N (FPT)</button>
+                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: 300, foam: 300}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxFoam === 300 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Ecopole</button>
                 </div>
                 <div className="pt-2"><p className="text-[10px] font-black text-white/40 uppercase mb-2">Taux d'injection</p><div className="grid grid-cols-5 gap-1.5">{PRESET_CONCENTRATIONS.map(c => (<button key={c} onClick={() => setConcentration(c)} className={`py-2 rounded-lg border text-[11px] font-black ${concentration === c ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>{c}%</button>))}</div></div>
               </div>
@@ -314,18 +315,22 @@ function FoamApp({ onBack }: { onBack: () => void }) {
             <div className="flex-1 flex flex-col gap-4">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div className="col-span-2 md:col-span-1 bg-white/[0.02] p-5 rounded-3xl border border-white/10 text-center"><p className="text-[9px] font-black text-white/40 uppercase">Temps</p><p className="text-5xl font-mono font-black">{formatTime(elapsedSeconds)}</p></div>
-                <div className={`p-5 rounded-3xl border text-center ${limitingAutonomy < 1 ? 'bg-red-500/10 border-red-500 animate-pulse' : 'bg-white/[0.02] border-white/10'}`}><p className="text-[9px] font-black text-white/40 uppercase">Autonomie</p><p className={`text-4xl font-mono font-black ${limitingAutonomy < 1 ? 'text-red-500' : 'text-emerald-400'}`}>{formatTime(limitingAutonomy*60)}</p></div>
+                <div className={`p-5 rounded-3xl border text-center ${limitingAutonomy < 1 ? 'bg-red-500/10 border-red-500 animate-pulse' : 'bg-white/[0.02] border-white/10'}`}>
+                  <p className="text-[9px] font-black text-white/40 uppercase">Autonomie</p>
+                  <p className={`text-4xl font-mono font-black ${limitingAutonomy < 1 ? 'text-red-500' : 'text-emerald-400'}`}>{formatTime(limitingAutonomy*60)}</p>
+                  <p className={`text-[10px] font-black uppercase mt-1 ${limitingAutonomy < 1 ? 'text-red-400' : 'text-white/40'}`}>Limite: {limitingFactor}</p>
+                </div>
                 <div className="bg-orange-950/20 p-5 rounded-3xl border border-orange-500/30 text-center"><p className="text-[9px] font-black text-orange-400/60 uppercase">Mousse Produit</p><p className="text-4xl font-mono font-black">{safeFixed(totalFoamProduced, 0)} <span className="text-sm">m³</span></p></div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Débit</span><span className="text-white text-xl">{flowRate} L/min</span></div>
-                  <div className="grid grid-cols-6 gap-1">{PRESET_FLOW_RATES.map(q => (<button key={q} onClick={() => setFlowRate(q)} className={`py-2 rounded-lg border text-[10px] font-black ${flowRate === q ? 'bg-white text-black' : 'bg-black/40'}`}>{q}</button>))}</div>
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Débit Solution</span><span className="text-white text-xl">{flowRate} L/min</span></div>
+                  <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
                 </div>
                 <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Taux</span><span className="text-orange-400 text-xl">{concentration}%</span></div>
-                  <div className="grid grid-cols-5 gap-1">{PRESET_CONCENTRATIONS.map(c => (<button key={c} onClick={() => setConcentration(c)} className={`py-2 rounded-lg border text-[10px] font-black ${concentration === c ? 'bg-orange-500' : 'bg-black/40'}`}>{c}%</button>))}</div>
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Taux d'injection</span><span className="text-orange-400 text-xl">{concentration}%</span></div>
+                  <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
                 </div>
               </div>
             </div>
@@ -352,7 +357,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
             setMode('setup'); 
             setElapsedSeconds(0); 
             setIsTimerActive(false); 
-            setStock({ water: 3000, foam: 100, maxWater: 3000, maxFoam: 100, isWaterSupplied: false });
+            setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false });
             setConcentration(1);
             setFlowRate(300);
             setExpansionRate(250);
@@ -886,20 +891,23 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
   const [height, setHeight] = useState<number>(0); // Hauteur pour volume
   
   // SDIS 77 Logic
-  const [fireType, setFireType] = useState<'hydro' | 'polar'>('hydro');
+  const [fireType, setFireType] = useState<'hydro' | 'polar' | 'solid'>('hydro');
   const [actionType, setActionType] = useState<'wetting' | 'extinction'>('extinction');
   const [product, setProduct] = useState<'biofor' | 'ecopol'>('biofor');
   const [rate, setRate] = useState<number>(3); // Taux application L/m²/min
+  const [solidConcentration, setSolidConcentration] = useState<number>(0.5); // 0.1 to 1%
   
   const duration = 20; // Durée fixe 20 min
 
   // Update defaults when Fire Type or Action Type changes
   useEffect(() => {
-    if (actionType === 'wetting') {
+    if (fireType === 'solid') {
+      setActionType('wetting');
+      setProduct('biofor');
+      if (rate > 2) setRate(1.5); // Default rate for solids is often lower
+    } else if (actionType === 'wetting') {
       setProduct('biofor'); // Mouillant = Bio For N uniquement
-      setRate(1); // Taux réduit pour mouillant (par défaut) ou on garde le taux manuel ?
-      // Généralement mouillant = taux plus faible ou application sur solides. 
-      // On va laisser l'utilisateur ajuster le taux, mais on force BioFor.
+      if (rate > 2) setRate(1);
     } else if (fireType === 'polar') {
       setProduct('ecopol'); // Polaire = Ecopol only
       setRate(5);
@@ -911,8 +919,10 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
 
   // Calcul Concentration
   let concentration = 1;
-  if (actionType === 'wetting') {
-    concentration = 0.5; // Mouillant 0.5%
+  if (fireType === 'solid') {
+    concentration = solidConcentration;
+  } else if (actionType === 'wetting') {
+    concentration = 0.5; // Mouillant 0.5% par défaut
   } else {
     // Extinction
     concentration = product === 'ecopol' ? 3 : 1;
@@ -925,17 +935,16 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
 
   // SDIS 77 Vehicles Data
   const vehicles = [
-    { name: "CCRM Gallin", water: 2500, foam: 140, products: ['biofor'] },
-    { name: "FPT Scania/Gimaex", water: 3000, foam: 200, products: ['biofor'] },
-    { name: "CCFM Renault", water: 3500, foam: 60, products: ['biofor'] },
-    { name: "FMOGP", water: 12000, foam: 2000, products: ['biofor', 'ecopol'] },
+    { name: "CCRM Gallin", water: 2500, foam: { biofor: 140, ecopol: 0 } },
+    { name: "FPT", water: 3000, foam: { biofor: 200, ecopol: 0 } },
+    { name: "CCFM Renault", water: 3500, foam: { biofor: 60, ecopol: 0 } },
+    { name: "FMOGP", water: 12000, foam: { biofor: 200, ecopol: 2000 } },
   ];
 
-  const capableVehicles = vehicles.filter(v => 
-    v.water >= volumeRequired && 
-    v.foam >= foamRequired &&
-    v.products.includes(product)
-  );
+  const capableVehicles = vehicles.filter(v => {
+    const foamCapacity = v.foam[product as keyof typeof v.foam] || 0;
+    return v.water >= volumeRequired && foamCapacity >= foamRequired;
+  });
 
   return (
     <div className="flex flex-col flex-1 bg-[#1a237e] text-blue-100 p-4 sm:p-6 font-mono animate-fadeIn relative overflow-hidden">
@@ -992,14 +1001,21 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
             </div>
 
             <div className="pt-4 border-t border-blue-400/20 space-y-2">
-              <div className="flex justify-between items-end">
-                <span className="text-xs uppercase text-blue-300 font-bold">Surface Totale</span>
-                <span className="text-4xl font-black text-white">{Math.round(surface)} <span className="text-lg text-blue-400">m²</span></span>
-              </div>
-              {height > 0 && (
-                <div className="flex justify-between items-end animate-fadeIn">
-                  <span className="text-xs uppercase text-blue-300/70 font-bold">Volume Estimé</span>
-                  <span className="text-2xl font-black text-white/80">{Math.round(surface * height)} <span className="text-sm text-blue-400/70">m³</span></span>
+              {height > 0 ? (
+                <>
+                  <div className="flex justify-between items-end animate-fadeIn">
+                    <span className="text-xs uppercase text-blue-300 font-bold">Volume Total</span>
+                    <span className="text-4xl font-black text-white">{Math.round(surface * height)} <span className="text-lg text-blue-400">m³</span></span>
+                  </div>
+                  <div className="flex justify-between items-end opacity-60">
+                    <span className="text-[10px] uppercase text-blue-300/70 font-bold">Surface au sol</span>
+                    <span className="text-xl font-black text-white/80">{Math.round(surface)} <span className="text-sm text-blue-400/70">m²</span></span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between items-end">
+                  <span className="text-xs uppercase text-blue-300 font-bold">Surface Totale</span>
+                  <span className="text-4xl font-black text-white">{Math.round(surface)} <span className="text-lg text-blue-400">m²</span></span>
                 </div>
               )}
             </div>
@@ -1010,23 +1026,10 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
             <h2 className="text-sm font-bold uppercase text-blue-300 flex items-center gap-2"><Settings size={16}/> 2. Tactique (SDIS 77)</h2>
             
             <div className="space-y-4">
-              {/* Mode d'action */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase text-blue-400 font-bold">Mode d'Action</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setActionType('wetting')} className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all ${actionType === 'wetting' ? 'bg-blue-500 border-blue-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60 hover:text-blue-300'}`}>
-                    Mouillant (0.5%)
-                  </button>
-                  <button onClick={() => setActionType('extinction')} className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all ${actionType === 'extinction' ? 'bg-blue-500 border-blue-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60 hover:text-blue-300'}`}>
-                    Extinction (Mousse)
-                  </button>
-                </div>
-              </div>
-
-              {/* Nature du Feu (Seulement si Extinction) */}
-              {actionType === 'extinction' && (
-                <div className="space-y-2 animate-fadeIn">
-                  <label className="text-[10px] uppercase text-blue-400 font-bold">Nature du Feu</label>
+              {/* Nature du Feu */}
+              <div className="space-y-2 animate-fadeIn">
+                <label className="text-[10px] uppercase text-blue-400 font-bold">Nature du Feu</label>
+                <div className="grid grid-cols-1 gap-2">
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => setFireType('hydro')} className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all ${fireType === 'hydro' ? 'bg-blue-500 border-blue-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60 hover:text-blue-300'}`}>
                       Hydrocarbure
@@ -1035,8 +1038,31 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                       Liquide Polaire
                     </button>
                   </div>
+                  <button onClick={() => setFireType('solid')} className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all ${fireType === 'solid' ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60 hover:text-blue-300'}`}>
+                    Feu de type A (Solide)
+                  </button>
                 </div>
-              )}
+              </div>
+
+              {/* Mode d'action */}
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase text-blue-400 font-bold">Mode d'Action</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => setActionType('wetting')} 
+                    className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all ${actionType === 'wetting' ? 'bg-blue-500 border-blue-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60 hover:text-blue-300'}`}
+                  >
+                    Mouillant
+                  </button>
+                  <button 
+                    disabled={fireType === 'solid'}
+                    onClick={() => setActionType('extinction')} 
+                    className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all ${actionType === 'extinction' ? 'bg-blue-500 border-blue-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60 hover:text-blue-300'} ${fireType === 'solid' ? 'opacity-30 cursor-not-allowed' : ''}`}
+                  >
+                    Extinction (Mousse)
+                  </button>
+                </div>
+              </div>
 
               {/* Additif */}
               <div className="space-y-2">
@@ -1048,17 +1074,38 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                     className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all flex flex-col items-center ${product === 'biofor' ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60'} ${(fireType === 'polar' && actionType === 'extinction') ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-300'}`}
                   >
                     <span>Bio For N</span>
-                    <span className="text-xs">{actionType === 'wetting' ? '0.5%' : '1%'}</span>
+                    <span className="text-xs">{fireType === 'solid' ? `${solidConcentration}%` : (actionType === 'wetting' ? '0.5%' : '1%')}</span>
                   </button>
                   <button 
                     onClick={() => setProduct('ecopol')} 
-                    disabled={actionType === 'wetting'}
-                    className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all flex flex-col items-center ${product === 'ecopol' ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60'} ${actionType === 'wetting' ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-300'}`}
+                    disabled={actionType === 'wetting' || fireType === 'solid'}
+                    className={`py-2 px-2 text-[10px] font-bold uppercase rounded border transition-all flex flex-col items-center ${product === 'ecopol' ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/60'} ${(actionType === 'wetting' || fireType === 'solid') ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-300'}`}
                   >
                     <span>Ecopol Premium</span>
                     <span className="text-xs">3%</span>
                   </button>
                 </div>
+                
+                {/* Concentration Selector for Solid Fire */}
+                {fireType === 'solid' && (
+                  <div className="pt-2 animate-fadeIn space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] uppercase text-blue-400/60 font-bold">Concentration Mouillant</span>
+                      <span className="text-xs font-bold text-white">{solidConcentration}%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {[0.1, 0.3, 0.5, 0.7, 1.0].map(c => (
+                        <button 
+                          key={c} 
+                          onClick={() => setSolidConcentration(c)}
+                          className={`flex-1 py-1 text-[9px] font-bold rounded border transition-all ${solidConcentration === c ? 'bg-blue-500 border-blue-400 text-white' : 'bg-blue-950/30 border-blue-400/20 text-blue-400/40'}`}
+                        >
+                          {c}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Taux d'application */}
@@ -1093,7 +1140,9 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                 {Math.round(flowRequired)}
                 <span className="text-lg sm:text-2xl text-blue-400 ml-2 font-bold">L/min</span>
               </div>
-              <p className="text-[10px] text-blue-200/50">Pour {Math.round(surface)}m² • {product === 'biofor' ? 'Bio For N' : 'Ecopol'} ({concentration}%)</p>
+              <p className="text-[10px] text-blue-200/50">
+                {height > 0 ? `Pour ${Math.round(surface * height)}m³` : `Pour ${Math.round(surface)}m²`} • {product === 'biofor' ? 'Bio For N' : 'Ecopol'} ({concentration}%)
+              </p>
             </div>
 
             <div className="flex flex-col justify-center gap-4 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-8">
@@ -1121,9 +1170,19 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
                 ))}
               </div>
             ) : (
-              <div className="bg-red-500/10 border border-red-500/30 p-3 rounded flex items-center gap-3">
-                <AlertTriangle size={16} className="text-red-400"/>
-                <span className="text-xs font-bold text-red-200">Aucun engin seul ne suffit. Attaque massive ou renforts requis.</span>
+              <div className="bg-red-500/10 border border-red-500/30 p-3 rounded flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle size={16} className="text-red-400"/>
+                  <span className="text-xs font-bold text-red-200">Aucun engin seul ne suffit. Attaque massive ou renforts requis.</span>
+                </div>
+                <div className="mt-2 p-3 bg-red-900/40 rounded-xl border border-red-500/30">
+                   <p className="text-[10px] font-black text-red-300 uppercase flex items-center gap-2 mb-1">
+                     <ShieldAlert size={12}/> Logistique Additif
+                   </p>
+                   <p className="text-[11px] text-red-200/80">
+                     Demander une <strong>CEMUL</strong> ou <strong>STEM</strong> pour l'acheminement de bidons supplémentaires.
+                   </p>
+                </div>
               </div>
             )}
           </div>
@@ -1156,6 +1215,41 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
               </div>
             </div>
           )}
+
+          {/* RÉFÉRENTIEL CAPACITÉS ENGINS */}
+          <div className="pt-6 border-t border-white/10 space-y-4">
+            <h3 className="text-[10px] font-black uppercase text-blue-300 tracking-widest flex items-center gap-2">
+              <Database size={14}/> Référentiel Capacités Engins (SDIS 77)
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-white/5 border border-white/10 p-4 rounded-2xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-black text-white uppercase">FPT</span>
+                  <span className="text-[8px] font-bold px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30">3000L EAU</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-white/40 uppercase font-bold">Bio For N</span>
+                  <span className="font-black text-orange-400">200 L</span>
+                </div>
+              </div>
+              <div className="bg-white/5 border border-white/10 p-4 rounded-2xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-black text-white uppercase">FMOGP</span>
+                  <span className="text-[8px] font-bold px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full border border-red-500/30">12000L EAU</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-white/40 uppercase font-bold">Bio For N</span>
+                    <span className="font-black text-orange-400">200 L</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-white/40 uppercase font-bold">Ecopol</span>
+                    <span className="font-black text-emerald-400">2000 L</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1168,7 +1262,7 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
 function FoamMenu({ onNavigate, onBack }: { onNavigate: (route: string) => void, onBack: () => void }) {
   return (
     <div className="flex flex-col flex-1 p-6 items-center justify-center animate-fadeIn relative bg-[#050505]">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-md space-y-4">
         <div className="flex items-center gap-4 mb-8">
           <button onClick={onBack} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all">
             <ChevronLeft className="w-6 h-6 text-white/60" />
@@ -1179,18 +1273,18 @@ function FoamMenu({ onNavigate, onBack }: { onNavigate: (route: string) => void,
           </div>
         </div>
 
-        <button onClick={() => onNavigate('foam-live')} className="w-full bg-white/[0.03] backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-          <div className="p-5 bg-orange-500/10 rounded-2xl text-orange-400 group-hover:scale-110 transition-all"><Activity size={40}/></div>
+        <button onClick={() => onNavigate('foam-live')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
+          <div className="p-4 bg-orange-500/10 rounded-2xl text-orange-400 group-hover:scale-110 transition-all"><Activity size={32}/></div>
           <div className="text-left">
-            <h2 className="text-2xl font-black uppercase">Opérations (Live)</h2>
+            <h2 className="text-xl font-black uppercase">Opérations (Live)</h2>
             <p className="text-[10px] uppercase font-bold text-white/30">Suivi Intervention & Autonomie</p>
           </div>
         </button>
 
-        <button onClick={() => onNavigate('surface')} className="w-full bg-white/[0.03] backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-          <div className="p-5 bg-blue-500/10 rounded-2xl text-blue-400 group-hover:scale-110 transition-all"><Calculator size={40}/></div>
+        <button onClick={() => onNavigate('surface')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
+          <div className="p-4 bg-blue-500/10 rounded-2xl text-blue-400 group-hover:scale-110 transition-all"><Calculator size={32}/></div>
           <div className="text-left">
-            <h2 className="text-2xl font-black uppercase">Calcul & Prédictions</h2>
+            <h2 className="text-xl font-black uppercase">Planificateur</h2>
             <p className="text-[10px] uppercase font-bold text-white/30">Surface, Moyens & Anticipation</p>
           </div>
         </button>
@@ -1304,12 +1398,12 @@ export default function App() {
               
               <button 
                 onClick={() => window.open('https://script.google.com/macros/s/AKfycbxKzSH9P3aT_CdSlX9Us1XImSXooX6xQJGOytwmzo5CJql3icyhSLpIvZb5MuSl-F-r1w/exec', '_blank')} 
-                className="w-full bg-slate-500/5 backdrop-blur-xl p-3 rounded-xl border border-slate-500/20 flex items-center gap-3 group hover:bg-slate-500/10 transition-all"
+                className="w-full bg-slate-500/5 backdrop-blur-xl p-3 rounded-xl border border-slate-500/20 flex items-center justify-center gap-3 group hover:bg-slate-500/10 transition-all"
               >
                 <div className="p-2 bg-slate-500/10 rounded-lg text-slate-400 group-hover:scale-110 transition-all">
                   <ClipboardList size={20}/>
                 </div>
-                <div className="text-left">
+                <div className="text-center">
                   <h2 className="text-sm font-black uppercase">Saisir un RETEX</h2>
                   <p className="text-[7px] uppercase font-bold text-white/20">Retours d'Expérience Opérationnels</p>
                 </div>
