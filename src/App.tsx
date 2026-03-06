@@ -63,6 +63,7 @@ const loadPersistedState = (key: string) => {
              // Ensure elapsedSeconds is a number
              const currentElapsed = typeof parsed.elapsedSeconds === 'number' ? parsed.elapsedSeconds : 0;
              parsed.elapsedSeconds = Math.max(0, currentElapsed + diff);
+             parsed.timeDiff = diff; // Store diff for other components to use
            }
            return parsed;
         }
@@ -137,9 +138,10 @@ function FoamApp({ onBack }: { onBack: () => void }) {
   const [stock, setStock] = useState(() => {
     try {
       const saved = localStorage.getItem('sdis77_foam_stock_v2');
+      let initialStock = { water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false };
+      
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Validation stricte de la structure
         if (
           parsed && typeof parsed === 'object' &&
           typeof parsed.water === 'number' &&
@@ -148,14 +150,29 @@ function FoamApp({ onBack }: { onBack: () => void }) {
           typeof parsed.maxFoam === 'number' &&
           typeof parsed.isWaterSupplied === 'boolean'
         ) {
-          return parsed;
+          initialStock = parsed;
         }
       }
+
+      // CATCH-UP LOGIC: Apply consumption during downtime if timer was active
+      if (savedState?.isTimerActive && savedState?.timeDiff && savedState.timeDiff > 0) {
+        const diff = savedState.timeDiff;
+        const savedFlow = savedState.flowRate || 300;
+        const savedConc = savedState.concentration || 1;
+        
+        const actualFoamFlow = (savedConc / 100) * savedFlow;
+        const actualWaterFlow = savedFlow - actualFoamFlow;
+
+        // Apply consumption
+        initialStock.water = initialStock.isWaterSupplied ? initialStock.water : Math.max(0, initialStock.water - (actualWaterFlow * diff / 60));
+        initialStock.foam = Math.max(0, initialStock.foam - (actualFoamFlow * diff / 60));
+      }
+
+      return initialStock;
     } catch (e) {
       console.error("Erreur chargement stock", e);
+      return { water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false };
     }
-    // Valeurs par défaut : FPT standard = 3000L eau / 200L additif
-    return { water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false };
   });
 
   useEffect(() => { 
@@ -215,7 +232,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
             <div className="flex items-center gap-3">
               <button onClick={onBack} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><ChevronLeft className="w-6 h-6 text-white/60" /></button>
               <div className="bg-gradient-to-br from-orange-500 to-red-600 p-2.5 rounded-xl"><Flame className="w-6 h-6 text-white" /></div>
-              <div><h1 className="text-xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Calcul Mousse</h1><p className="text-[9px] font-bold text-orange-400 uppercase">SDIS 77</p></div>
+              <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Calcul Mousse</h1><p className="text-[9px] sm:text-[10px] font-bold text-orange-400 uppercase tracking-widest">SDIS 77</p></div>
             </div>
             <button onClick={() => setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false })} className="p-3 bg-white/5 rounded-xl border border-white/10"><RefreshCcw className="w-5 h-5 text-white/60" /></button>
           </div>
@@ -254,14 +271,14 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   <button onClick={() => setStock((s: any) => ({...s, maxWater: s.maxWater+100, water: s.water+100}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center active:bg-white/10"><Plus/></button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setStock((s: any) => ({...s, maxWater: 3000, water: 3000}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxWater === 3000 ? 'bg-blue-600 border-blue-400' : 'bg-white/5 border-white/10'}`}>FPT (3000L)</button>
-                  <button onClick={() => setStock((s: any) => ({...s, maxWater: 4000, water: 4000}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxWater === 4000 ? 'bg-blue-600 border-blue-400' : 'bg-white/5 border-white/10'}`}>CCF (4000L)</button>
+                  <button onClick={() => setStock((s: any) => ({...s, maxWater: 3000, water: 3000}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.maxWater === 3000 ? 'bg-blue-600 border-blue-400' : 'bg-white/5 border-white/10'}`}>FPT (3000L)</button>
+                  <button onClick={() => setStock((s: any) => ({...s, maxWater: 4000, water: 4000}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.maxWater === 4000 ? 'bg-blue-600 border-blue-400' : 'bg-white/5 border-white/10'}`}>CCF (4000L)</button>
                 </div>
                 <div className="space-y-1 pt-2 border-t border-white/5">
                   <p className="text-[10px] font-black text-white/40 uppercase">Engin Alimenté ?</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: true}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.isWaterSupplied ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'bg-white/5 border-white/10 text-white/30'}`}>OUI</button>
-                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: false}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${!stock.isWaterSupplied ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-white/5 border-white/10 text-white/30'}`}>NON</button>
+                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: true}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.isWaterSupplied ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'bg-white/5 border-white/10 text-white/30'}`}>OUI</button>
+                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: false}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${!stock.isWaterSupplied ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-white/5 border-white/10 text-white/30'}`}>NON</button>
                   </div>
                 </div>
               </div>
@@ -286,10 +303,10 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   <button onClick={() => setStock((s: any) => ({...s, maxFoam: s.maxFoam+10, foam: s.foam+10}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center active:bg-white/10"><Plus/></button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: 200, foam: 200}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxFoam === 200 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Bio for N (FPT)</button>
-                  <button onClick={() => setStock((s: any) => ({...s, maxFoam: 300, foam: 300}))} className={`py-2 rounded-lg text-[10px] font-black border transition-all ${stock.maxFoam === 300 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Ecopole</button>
+                  <button onClick={() => { setStock((s: any) => ({...s, maxFoam: 200, foam: 200})); setConcentration(1); }} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.maxFoam === 200 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Bio for N (FPT)</button>
+                  <button onClick={() => { setStock((s: any) => ({...s, maxFoam: 300, foam: 300})); setConcentration(3); }} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.maxFoam === 300 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Ecopole</button>
                 </div>
-                <div className="pt-2"><p className="text-[10px] font-black text-white/40 uppercase mb-2">Taux d'injection</p><div className="grid grid-cols-5 gap-1.5">{PRESET_CONCENTRATIONS.map(c => (<button key={c} onClick={() => setConcentration(c)} className={`py-2 rounded-lg border text-[11px] font-black ${concentration === c ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>{c}%</button>))}</div></div>
+                <div className="pt-2"><p className="text-[10px] font-black text-white/40 uppercase mb-2">Taux d'injection</p><div className="grid grid-cols-5 gap-1.5">{PRESET_CONCENTRATIONS.map(c => (<button key={c} onClick={() => setConcentration(c)} className={`py-3 rounded-xl border text-[10px] font-black ${concentration === c ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>{c}%</button>))}</div></div>
               </div>
             </div>
 
@@ -302,15 +319,15 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   <button onClick={() => setFlowRate(f => f + 50)} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Plus/></button>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  <button onClick={() => setFlowRate(250)} className={`py-2 px-3 rounded-xl border flex items-center justify-between transition-all ${flowRate === 250 ? 'bg-white text-black' : 'bg-white/5 border-white/10'}`}>
+                  <button onClick={() => setFlowRate(250)} className={`py-3 px-4 rounded-xl border flex items-center justify-between transition-all ${flowRate === 250 ? 'bg-white text-black' : 'bg-white/5 border-white/10'}`}>
                     <span className="text-[10px] font-black uppercase">Lance (Fût)</span>
                     <span className="font-mono font-bold">250</span>
                   </button>
-                  <button onClick={() => setFlowRate(300)} className={`py-2 px-3 rounded-xl border flex items-center justify-between transition-all ${flowRate === 300 ? 'bg-white text-black' : 'bg-white/5 border-white/10'}`}>
+                  <button onClick={() => setFlowRate(300)} className={`py-3 px-4 rounded-xl border flex items-center justify-between transition-all ${flowRate === 300 ? 'bg-white text-black' : 'bg-white/5 border-white/10'}`}>
                     <span className="text-[10px] font-black uppercase">Ventilateur</span>
                     <span className="font-mono font-bold">300</span>
                   </button>
-                  <button onClick={() => setFlowRate(1000)} className={`py-2 px-3 rounded-xl border flex items-center justify-between transition-all ${flowRate === 1000 ? 'bg-white text-black' : 'bg-white/5 border-white/10'}`}>
+                  <button onClick={() => setFlowRate(1000)} className={`py-3 px-4 rounded-xl border flex items-center justify-between transition-all ${flowRate === 1000 ? 'bg-white text-black' : 'bg-white/5 border-white/10'}`}>
                     <span className="text-[10px] font-black uppercase">Lance Canon</span>
                     <span className="font-mono font-bold">1000</span>
                   </button>
@@ -335,14 +352,14 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   </div>
                   <button onClick={() => setExpansionRate(r => r + 10)} className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center"><Plus size={16}/></button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">{EXPANSION_RATES.map(e => (<button key={e.value} onClick={() => setExpansionRate(e.value)} className={`py-2 rounded-xl border text-[9px] font-black uppercase ${expansionRate === e.value ? 'bg-orange-500 border-orange-400' : 'bg-white/5 border-white/10'}`}>{e.label}<span className="block opacity-60">x{e.value}</span></button>))}</div>
+                <div className="grid grid-cols-2 gap-2">{EXPANSION_RATES.map(e => (<button key={e.value} onClick={() => { setExpansionRate(e.value); if(e.label.includes('Lance')) setFlowRate(250); if(e.label.includes('Batfan') || e.label.includes('MT296')) setFlowRate(300); }} className={`py-3 rounded-xl border text-[9px] font-black uppercase ${expansionRate === e.value ? 'bg-orange-500 border-orange-400' : 'bg-white/5 border-white/10'}`}>{e.label}<span className="block opacity-60">x{e.value}</span></button>))}</div>
               </div>
             </div>
           </div>
           {isTimerActive ? (
              <button onClick={() => setMode('operational')} className="w-full bg-emerald-600 py-6 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><CheckCircle2/> Valider & Retour</button>
           ) : (
-             <button onClick={() => { setMode('operational'); setIsTimerActive(true); if (stock.isWaterSupplied) setStock((s: any) => ({ ...s, water: 3000 })); }} className="w-full bg-gradient-to-br from-orange-600 to-red-800 py-6 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><Flame/> Engager l'Attaque</button>
+             <button onClick={() => { setMode('operational'); setIsTimerActive(true); if (stock.isWaterSupplied) setStock((s: any) => ({ ...s, water: 3000 })); }} className="w-full bg-gradient-to-br from-orange-600 to-red-800 py-8 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><Flame/> Engager l'Attaque</button>
           )}
         </div>
       ) : mode === 'operational' ? (
@@ -428,7 +445,7 @@ const VENT_MATERIAL_LABELS: Record<string, string> = {
   mt296: 'MT296 (CO)', 
   sax: 'SAX 350', 
   stopPetit: 'Stoppeur Fumées 90cm', 
-  stopGrand: 'Stoppeur Fumées 140cm'
+  stopGrand: 'Stoppeur Fumées 150cm'
 };
 
 const VENT_SPECS = [
@@ -533,16 +550,20 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
     return () => clearInterval(int);
   }, [isVentilating]);
 
-  const totalSeconds = (Array.isArray(history) ? history.reduce((acc, h) => acc + (h.durationMins * 60 + h.durationSecs), 0) : 0) + (elapsedSeconds || 0);
+  const totalSeconds = (Array.isArray(history) ? history.reduce((acc, h) => acc + ((h.durationMins || 0) * 60 + (h.durationSecs || 0)), 0) : 0) + (elapsedSeconds || 0);
 
   const handleSequence = () => {
-    setHistory(prev => [...prev, {
-      phase: prev.length + 1,
-      startTime: startTime || "N/A",
-      duration: safeFormatTime(elapsedSeconds),
-      durationMins: Math.floor(elapsedSeconds/60), durationSecs: elapsedSeconds%60,
-      pmtt: { ...pmtt }, engagementARI, materials: { ...materials }
-    }]);
+    const safeElapsed = (typeof elapsedSeconds === 'number' && isFinite(elapsedSeconds)) ? elapsedSeconds : 0;
+    setHistory(prev => {
+      const safePrev = Array.isArray(prev) ? prev : [];
+      return [...safePrev, {
+        phase: safePrev.length + 1,
+        startTime: startTime || "N/A",
+        duration: safeFormatTime(safeElapsed),
+        durationMins: Math.floor(safeElapsed/60), durationSecs: safeElapsed%60,
+        pmtt: { ...pmtt }, engagementARI, materials: { ...materials }
+      }];
+    });
     setStep(1); setElapsedSeconds(0); setStartTime(null); 
     setChecks({vent:false,batiment:false,stopFumee:false,lance:false,autorise:false,influenceFoyer:false}); 
     setPmtt({naturel:false, force:false, horizontale:false, verticale:false, defensive:false, vpp:false, depression:false});
@@ -561,7 +582,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
           <div className="flex items-center gap-3">
             <button onClick={onBack} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"><ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white/60" /></button>
             <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20"><Wind className="w-5 h-5 sm:w-6 sm:h-6 text-white" /></div>
-            <div><h1 className="text-xl sm:text-2xl font-black uppercase text-white">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">SDIS 77</p></div>
+            <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">SDIS 77</p></div>
           </div>
         </div>
         <div className="flex-1 flex flex-col justify-center gap-6">
@@ -569,7 +590,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
               <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity"><Wind size={120} /></div>
               <div className="relative z-10 space-y-2">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30"><Play className="text-black fill-current" size={24}/></div>
-                <h2 className="text-2xl font-black uppercase text-white">Opérationnel (Live)</h2>
+                <h2 className="text-2xl font-black uppercase text-white">Opérations (Live)</h2>
                 <p className="text-sm text-white/60 font-medium max-w-[80%]">Suivi d'intervention, chronomètre, phases et bilan.</p>
               </div>
            </button>
@@ -597,7 +618,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
               <div className="flex items-center gap-4">
                 <button onClick={() => setView('menu')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all shadow-lg"><ChevronLeft className="w-6 h-6 text-white" /></button>
                 <div>
-                  <h1 className="text-2xl font-black uppercase tracking-tighter text-white">Spécificités</h1>
+                  <h1 className="text-2xl font-black uppercase tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Spécificités</h1>
                   <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em]">Matériel Ventilation</p>
                 </div>
               </div>
@@ -688,7 +709,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
             <div className="flex items-center gap-3">
               <button onClick={() => setView('menu')} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"><ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white/60" /></button>
               <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20"><Wind className="w-5 h-5 sm:w-6 sm:h-6 text-white" /></div>
-              <div><h1 className="text-xl sm:text-2xl font-black uppercase text-white">V.O.</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{history.length > 0 ? `Phase ${history.length+1}` : "SDIS 77"}</p></div>
+              <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{history.length > 0 ? `Phase ${history.length+1}` : "SDIS 77"}</p></div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               {isVentilating && <div className="bg-emerald-500/20 border border-emerald-500/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse"><Wind className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400 font-mono font-black text-xs">{safeFormatTime(elapsedSeconds)}</span></div>}
@@ -698,7 +719,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 
           <div className="flex w-full gap-1 mb-4 hide-scrollbar">
             {['Reco', 'Manœu', 'Action', 'Suivi'].map((l, i) => (
-              <button key={i} onClick={() => setStep(i+1)} className={`flex-1 pb-3 border-b-2 font-black uppercase tracking-widest text-[10px] transition-all ${step === i+1 ? 'border-emerald-400 text-emerald-400' : 'border-white/10 text-white/30'}`}>{i+1}. {l}</button>
+              <button key={i} onClick={() => setStep(i+1)} className={`flex-1 pb-3 border-b-2 font-black uppercase tracking-widest text-[10px] sm:text-xs transition-all ${step === i+1 ? 'border-emerald-400 text-emerald-400' : 'border-white/10 text-white/30'}`}>{i+1}. {l}</button>
             ))}
           </div>
 
@@ -730,28 +751,28 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="bg-white/[0.02] p-4 rounded-2xl border border-orange-500/30 space-y-3">
-                    <h4 className="text-[9px] font-black uppercase text-orange-400 border-b border-white/5 pb-1">Principe</h4>
+                    <h4 className="text-[10px] font-black uppercase text-orange-400 border-b border-white/5 pb-1">Principe</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => togglePMTT('principe', 'naturel')} className={`py-3 rounded-xl border text-[10px] font-black ${pmtt.naturel ? 'bg-orange-500 text-black' : 'bg-black/40'}`}>NATUREL</button>
                       <button onClick={() => togglePMTT('principe', 'force')} className={`py-3 rounded-xl border text-[10px] font-black ${pmtt.force ? 'bg-orange-500 text-black' : 'bg-black/40'}`}>FORCÉ</button>
                     </div>
                   </div>
                   <div className="bg-white/[0.02] p-4 rounded-2xl border border-red-500/30 space-y-3">
-                    <h4 className="text-[9px] font-black uppercase text-red-500 border-b border-white/5 pb-1">Méthode</h4>
+                    <h4 className="text-[10px] font-black uppercase text-red-500 border-b border-white/5 pb-1">Méthode</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => togglePMTT('methode', 'horizontale')} className={`py-3 rounded-xl border text-[10px] font-black ${pmtt.horizontale ? 'bg-red-500 text-black' : 'bg-black/40'}`}>HORIZ.</button>
                       <button onClick={() => togglePMTT('methode', 'verticale')} className={`py-3 rounded-xl border text-[10px] font-black ${pmtt.verticale ? 'bg-red-500 text-black' : 'bg-black/40'}`}>VERT.</button>
                     </div>
                   </div>
                   <div className="bg-white/[0.02] p-4 rounded-2xl border border-teal-500/30 space-y-3">
-                    <h4 className="text-[9px] font-black uppercase text-teal-400 border-b border-white/5 pb-1">Technique</h4>
+                    <h4 className="text-[10px] font-black uppercase text-teal-400 border-b border-white/5 pb-1">Technique</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => togglePMTT('technique', 'vpp')} className={`py-3 rounded-xl border text-[10px] font-black ${pmtt.vpp ? 'bg-teal-500 text-black' : 'bg-black/40'}`}>V.P.P</button>
                       <button onClick={() => togglePMTT('technique', 'depression')} className={`py-3 rounded-xl border text-[10px] font-black ${pmtt.depression ? 'bg-teal-500 text-black' : 'bg-black/40'}`}>DÉPR.</button>
                     </div>
                   </div>
                   <div className="bg-white/[0.02] p-4 rounded-2xl border border-blue-400/30 space-y-3">
-                    <h4 className="text-[9px] font-black uppercase text-blue-400 border-b border-white/5 pb-1">Tactique</h4>
+                    <h4 className="text-[10px] font-black uppercase text-blue-400 border-b border-white/5 pb-1">Tactique</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => togglePMTT('tactique', 'defensive')} className={`py-3 rounded-xl border text-[10px] font-black ${pmtt.defensive ? 'bg-blue-500 text-black' : 'bg-black/40'}`}>DÉFENSIVE</button>
                       <div className="py-3 rounded-xl bg-black/40 text-[10px] font-black text-white/20 border border-white/5 line-through flex items-center justify-center">OFFENSIVE</div>
@@ -782,9 +803,9 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
                    <h4 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2">Checklist de sécurité</h4>
-                   <button onClick={() => toggleCheck('autorise')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.autorise ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[11px]">Autorisation COS obtenue</span></button>
-                   <button onClick={() => toggleCheck('stopFumee')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.stopFumee ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[11px]">Maîtrise des flux (Stop Fumées)</span></button>
-                   <button onClick={() => toggleCheck('influenceFoyer')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.influenceFoyer ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[11px]">Aucune influence sur le foyer</span></button>
+                   <button onClick={() => toggleCheck('autorise')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.autorise ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[10px] sm:text-xs">Autorisation COS obtenue</span></button>
+                   <button onClick={() => toggleCheck('stopFumee')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.stopFumee ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[10px] sm:text-xs">Maîtrise des flux (Stop Fumées)</span></button>
+                   <button onClick={() => toggleCheck('influenceFoyer')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.influenceFoyer ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[10px] sm:text-xs">Aucune influence sur le foyer</span></button>
                 </div>
                 <button disabled={!(checks.autorise && checks.stopFumee && checks.influenceFoyer)} onClick={() => { setIsVentilating(true); setStep(4); setStartTime(new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})); }} className={`w-full py-8 rounded-3xl font-black text-xl uppercase tracking-widest ${checks.autorise && checks.stopFumee && checks.influenceFoyer ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/40' : 'bg-white/5 text-white/20'}`}>Démarrer Ventilation</button>
               </div>
@@ -939,16 +960,16 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 function SurfaceApp({ onBack }: { onBack: () => void }) {
   const savedState = React.useRef(loadPersistedState('sdis77_surface_state')).current;
   const [shape, setShape] = useState<'rect' | 'circle'>(savedState?.shape || 'rect');
-  const [dim1, setDim1] = useState<number>(savedState?.dim1 || 0); // Longueur ou Diamètre
-  const [dim2, setDim2] = useState<number>(savedState?.dim2 || 0); // Largeur
-  const [height, setHeight] = useState<number>(savedState?.height || 0); // Hauteur pour volume
+  const [dim1, setDim1] = useState<number>(() => { const v = savedState?.dim1; return (typeof v === 'number' && isFinite(v)) ? v : 0; });
+  const [dim2, setDim2] = useState<number>(() => { const v = savedState?.dim2; return (typeof v === 'number' && isFinite(v)) ? v : 0; });
+  const [height, setHeight] = useState<number>(() => { const v = savedState?.height; return (typeof v === 'number' && isFinite(v)) ? v : 0; });
   
   // SDIS 77 Logic
   const [fireType, setFireType] = useState<'hydro' | 'polar' | 'solid'>(savedState?.fireType || 'hydro');
   const [actionType, setActionType] = useState<'wetting' | 'extinction'>(savedState?.actionType || 'extinction');
   const [product, setProduct] = useState<'biofor' | 'ecopol'>(savedState?.product || 'biofor');
-  const [rate, setRate] = useState<number>(savedState?.rate || 3); // Taux application L/m²/min
-  const [solidConcentration, setSolidConcentration] = useState<number>(savedState?.solidConcentration || 0.5); // 0.1 to 1%
+  const [rate, setRate] = useState<number>(() => { const v = savedState?.rate; return (typeof v === 'number' && isFinite(v)) ? v : 3; });
+  const [solidConcentration, setSolidConcentration] = useState<number>(() => { const v = savedState?.solidConcentration; return (typeof v === 'number' && isFinite(v)) ? v : 0.5; });
   
   const duration = 20; // Durée fixe 20 min
 
@@ -1355,30 +1376,37 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
 function FoamMenu({ onNavigate, onBack }: { onNavigate: (route: string) => void, onBack: () => void }) {
   return (
     <div className="flex flex-col flex-1 p-6 items-center justify-center animate-fadeIn relative bg-[#050505]">
-      <div className="w-full max-w-md space-y-4">
-        <div className="flex items-center gap-4 mb-8">
-          <button onClick={onBack} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all">
-            <ChevronLeft className="w-6 h-6 text-white/60" />
-          </button>
-          <div>
-            <h1 className="text-3xl font-black uppercase text-white">Mousse</h1>
-            <p className="text-[10px] uppercase font-bold text-orange-400 tracking-widest">Menu Principal</p>
+      <div className="w-full max-w-md space-y-6">
+        <div className="flex justify-between items-center border-b border-white/5 pb-4 pt-2 w-full">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all">
+              <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white/60" />
+            </button>
+            <div className="bg-gradient-to-br from-orange-500 to-red-600 p-2.5 rounded-xl shadow-lg shadow-orange-500/20">
+              <Database className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Mousse</h1>
+              <p className="text-[9px] sm:text-[10px] font-bold text-orange-400 uppercase tracking-widest">Menu Principal</p>
+            </div>
           </div>
         </div>
 
-        <button onClick={() => onNavigate('foam-live')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-          <div className="p-4 bg-orange-500/10 rounded-2xl text-orange-400 group-hover:scale-110 transition-all"><Activity size={32}/></div>
-          <div className="text-left">
-            <h2 className="text-xl font-black uppercase">Opérations (Live)</h2>
-            <p className="text-[10px] uppercase font-bold text-white/30">Suivi Intervention & Autonomie</p>
+        <button onClick={() => onNavigate('foam-live')} className="w-full group relative overflow-hidden bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 p-8 rounded-[2rem] transition-all duration-300 text-left">
+          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity"><Activity size={120} /></div>
+          <div className="relative z-10 space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-orange-500 flex items-center justify-center mb-4 shadow-lg shadow-orange-500/30"><Play className="text-black fill-current" size={24}/></div>
+            <h2 className="text-2xl font-black uppercase text-white">Opérations (Live)</h2>
+            <p className="text-sm text-white/60 font-medium max-w-[80%]">Suivi Intervention & Autonomie</p>
           </div>
         </button>
 
-        <button onClick={() => onNavigate('surface')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-          <div className="p-4 bg-blue-500/10 rounded-2xl text-blue-400 group-hover:scale-110 transition-all"><Calculator size={32}/></div>
-          <div className="text-left">
-            <h2 className="text-xl font-black uppercase">Planificateur</h2>
-            <p className="text-[10px] uppercase font-bold text-white/30">Surface, Moyens & Anticipation</p>
+        <button onClick={() => onNavigate('surface')} className="w-full group relative overflow-hidden bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 p-8 rounded-[2rem] transition-all duration-300 text-left">
+          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity"><Calculator size={120} /></div>
+          <div className="relative z-10 space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-blue-500 flex items-center justify-center mb-4 shadow-lg shadow-blue-500/30"><Calculator className="text-white" size={24}/></div>
+            <h2 className="text-2xl font-black uppercase text-white">Planificateur</h2>
+            <p className="text-sm text-white/60 font-medium max-w-[80%]">Surface, Moyens & Anticipation</p>
           </div>
         </button>
       </div>
@@ -1480,25 +1508,35 @@ export default function App() {
             )}
 
             <div className="w-full max-w-md space-y-4">
-              <button onClick={()=>navigateTo('ventilation')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-                <div className="p-5 bg-emerald-500/10 rounded-2xl text-emerald-400 group-hover:scale-110 transition-all"><Wind size={40}/></div>
-                <div className="text-left"><h2 className="text-2xl font-black uppercase">Ventilation</h2><p className="text-[10px] uppercase font-bold text-white/30">Assistant PMTT & Séquences</p></div>
+              <button onClick={()=>navigateTo('ventilation')} className="group relative overflow-hidden bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 p-8 rounded-[2rem] transition-all duration-300 text-left w-full">
+                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity"><Wind size={120} /></div>
+                <div className="relative z-10 space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30"><Wind className="text-black" size={24}/></div>
+                  <h2 className="text-2xl font-black uppercase text-white">Ventilation</h2>
+                  <p className="text-sm text-white/60 font-medium max-w-[80%]">Assistant PMTT & Séquences</p>
+                </div>
               </button>
-              <button onClick={()=>navigateTo('foam-menu')} className="w-full bg-white/[0.03] backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/10 flex items-center gap-6 group hover:bg-white/5 transition-all">
-                <div className="p-5 bg-orange-500/10 rounded-2xl text-orange-400 group-hover:scale-110 transition-all"><Database size={40}/></div>
-                <div className="text-left"><h2 className="text-2xl font-black uppercase">Mousse</h2><p className="text-[10px] uppercase font-bold text-white/30">Calculateur & Autonomie</p></div>
+
+              <button onClick={()=>navigateTo('foam-menu')} className="group relative overflow-hidden bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 p-8 rounded-[2rem] transition-all duration-300 text-left w-full">
+                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity"><Database size={120} /></div>
+                <div className="relative z-10 space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-orange-500 flex items-center justify-center mb-4 shadow-lg shadow-orange-500/30"><Database className="text-white" size={24}/></div>
+                  <h2 className="text-2xl font-black uppercase text-white">Mousse</h2>
+                  <p className="text-sm text-white/60 font-medium max-w-[80%]">Calculateur & Autonomie</p>
+                </div>
               </button>
               
               <button 
                 onClick={() => window.open('https://script.google.com/macros/s/AKfycbxKzSH9P3aT_CdSlX9Us1XImSXooX6xQJGOytwmzo5CJql3icyhSLpIvZb5MuSl-F-r1w/exec', '_blank')} 
-                className="w-full bg-slate-500/10 backdrop-blur-xl p-4 rounded-[2rem] border border-slate-500/30 flex flex-col items-center justify-center gap-1 group hover:bg-slate-500/20 transition-all shadow-lg"
+                className="group relative overflow-hidden bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/30 p-3 rounded-xl transition-all duration-300 text-left w-full flex items-center gap-3"
               >
-                <div className="text-slate-400 group-hover:scale-110 transition-all mb-1">
-                  <ClipboardList size={24}/>
+                <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity"><ClipboardList size={60} /></div>
+                <div className="relative z-10 w-8 h-8 rounded-lg bg-slate-500 flex items-center justify-center shadow-lg shadow-slate-500/30 shrink-0">
+                  <ClipboardList className="text-white" size={16}/>
                 </div>
-                <div className="text-center">
-                  <h2 className="text-sm font-black uppercase tracking-widest">Saisir un RETEX</h2>
-                  <p className="text-[8px] uppercase font-bold text-white/30">Retours d'Expérience Opérationnels</p>
+                <div className="relative z-10">
+                  <h2 className="text-sm font-black uppercase text-white">Saisir un RETEX</h2>
+                  <p className="text-[10px] text-white/60 font-medium">Retours d'Expérience</p>
                 </div>
               </button>
             </div>
