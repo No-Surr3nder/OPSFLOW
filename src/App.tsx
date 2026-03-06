@@ -5,7 +5,7 @@ import {
   Settings, Wind, ChevronLeft, Eye, Map, Thermometer, Users, AlertTriangle, 
   StopCircle, CheckSquare, DoorClosed, ClipboardList, X, ArrowUp, ArrowRight, 
   ArrowDown, History, Moon, Compass, FileText, Ruler, Calculator, Square, Circle, BoxSelect,
-  ArrowDownToLine, ArrowUpFromLine, Info
+  ArrowDownToLine, ArrowUpFromLine, Info, Home
 } from 'lucide-react';
 
 // --- CONSTANTES ---
@@ -60,8 +60,8 @@ const loadPersistedState = (key: string) => {
         if (parsed && typeof parsed === 'object') {
            if (parsed.lastTimestamp && (parsed.isTimerActive || parsed.isVentilating)) {
              const diff = Math.floor((Date.now() - parsed.lastTimestamp) / 1000);
-             // Ensure elapsedSeconds is a number
-             const currentElapsed = typeof parsed.elapsedSeconds === 'number' ? parsed.elapsedSeconds : 0;
+             // Ensure elapsedSeconds is a number and not NaN
+             const currentElapsed = (typeof parsed.elapsedSeconds === 'number' && !isNaN(parsed.elapsedSeconds)) ? parsed.elapsedSeconds : 0;
              parsed.elapsedSeconds = Math.max(0, currentElapsed + diff);
              parsed.timeDiff = diff; // Store diff for other components to use
            }
@@ -97,13 +97,12 @@ const SegmentedGauge = ({ value, max, color = 'blue' }: { value: number; max: nu
   };
 
   return (
-    <div className="relative flex flex-col-reverse w-12 sm:w-14 h-full min-h-[160px] gap-1 bg-white/5 backdrop-blur-md p-2 rounded-2xl border border-white/10 shadow-inner">
-      <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-        <div className="w-2 sm:w-3 h-[1px] bg-white/30" />
-        <span className="text-[9px] font-black text-white/40 tracking-widest">1/2</span>
+    <div className="relative flex flex-col-reverse w-full h-full gap-1 bg-white/5 backdrop-blur-md p-1.5 rounded-xl border border-white/10 shadow-inner">
+      <div className="absolute left-full ml-1 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+        <div className="w-1.5 h-[1px] bg-white/30" />
       </div>
       {[...Array(segments)].map((_, i) => (
-        <div key={i} className={`flex-1 rounded-sm transition-all duration-700 ${i < activeSegments ? colors[color] : 'bg-white/5 border border-white/5'}`} />
+        <div key={i} className={`flex-1 rounded-[1px] transition-all duration-700 ${i < activeSegments ? colors[color] : 'bg-white/5 border border-white/5'}`} />
       ))}
     </div>
   );
@@ -117,23 +116,24 @@ const safeFormatTime = (s: number) => {
 // ==========================================
 // MODULE 1 : CALCULATEUR MOUSSE
 // ==========================================
-function FoamApp({ onBack }: { onBack: () => void }) {
+function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void }) {
   const savedState = React.useRef(loadPersistedState('sdis77_foam_state')).current;
   const [mode, setMode] = useState<'setup' | 'operational' | 'report'>(savedState?.mode || 'setup'); 
   const [concentration, setConcentration] = useState(savedState?.concentration || 1);
   const [flowRate, setFlowRate] = useState(savedState?.flowRate || 300);
   const [expansionRate, setExpansionRate] = useState(savedState?.expansionRate || 250); 
   const [elapsedSeconds, setElapsedSeconds] = useState(savedState?.elapsedSeconds || 0);
+  const [cumulativeWater, setCumulativeWater] = useState(savedState?.cumulativeWater || 0);
   const [isTimerActive, setIsTimerActive] = useState(savedState?.isTimerActive || false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [logs, setLogs] = useState<any[]>([]);
+  const [foamStartTime, setFoamStartTime] = useState<number | null>(savedState?.foamStartTime || null);
+  const [showCOSModal, setShowCOSModal] = useState(false);
 
   // Persistance de l'état
   useEffect(() => {
     localStorage.setItem('sdis77_foam_state', JSON.stringify({
-      mode, concentration, flowRate, expansionRate, elapsedSeconds, isTimerActive, lastTimestamp: Date.now()
+      mode, concentration, flowRate, expansionRate, elapsedSeconds, cumulativeWater, isTimerActive, foamStartTime, lastTimestamp: Date.now()
     }));
-  }, [mode, concentration, flowRate, expansionRate, elapsedSeconds, isTimerActive]);
+  }, [mode, concentration, flowRate, expansionRate, elapsedSeconds, cumulativeWater, isTimerActive, foamStartTime]);
 
   const [stock, setStock] = useState(() => {
     try {
@@ -166,6 +166,12 @@ function FoamApp({ onBack }: { onBack: () => void }) {
         // Apply consumption
         initialStock.water = initialStock.isWaterSupplied ? initialStock.water : Math.max(0, initialStock.water - (actualWaterFlow * diff / 60));
         initialStock.foam = Math.max(0, initialStock.foam - (actualFoamFlow * diff / 60));
+        
+        // Catch up cumulative water (needs to be done in the state init or effect, but here we only touch stock)
+        // We handle cumulativeWater catchup in its own useState initializer or effect if needed, 
+        // but since it's a simple number, we can just add to it if we had access to setCumulativeWater.
+        // Instead, we'll rely on the savedState.cumulativeWater being loaded, but we need to add the diff.
+        // Since we can't easily set state here, we'll do it in a useEffect on mount.
       }
 
       return initialStock;
@@ -174,6 +180,18 @@ function FoamApp({ onBack }: { onBack: () => void }) {
       return { water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false };
     }
   });
+
+  // Catch-up effect for cumulativeWater
+  useEffect(() => {
+    if (savedState?.isTimerActive && savedState?.timeDiff && savedState.timeDiff > 0) {
+       const diff = savedState.timeDiff;
+       const savedFlow = savedState.flowRate || 300;
+       const savedConc = savedState.concentration || 1;
+       const actualFoamFlow = (savedConc / 100) * savedFlow;
+       const actualWaterFlow = savedFlow - actualFoamFlow;
+       setCumulativeWater(prev => prev + (actualWaterFlow * diff / 60));
+    }
+  }, []);
 
   useEffect(() => { 
     try {
@@ -209,6 +227,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
     if (isTimerActive) {
       interval = setInterval(() => {
         setElapsedSeconds(s => s + 1);
+        setCumulativeWater(prev => prev + (actualWaterFlow / 60));
         setStock((prev: any) => ({
           ...prev,
           water: prev.isWaterSupplied ? prev.water : Math.max(0, prev.water - (actualWaterFlow / 60)),
@@ -234,7 +253,10 @@ function FoamApp({ onBack }: { onBack: () => void }) {
               <div className="bg-gradient-to-br from-orange-500 to-red-600 p-2.5 rounded-xl"><Flame className="w-6 h-6 text-white" /></div>
               <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Calcul Mousse</h1><p className="text-[9px] sm:text-[10px] font-bold text-orange-400 uppercase tracking-widest">SDIS 77</p></div>
             </div>
-            <button onClick={() => setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false })} className="p-3 bg-white/5 rounded-xl border border-white/10"><RefreshCcw className="w-5 h-5 text-white/60" /></button>
+            <div className="flex gap-2">
+              <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
+              <button onClick={() => setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false })} className="p-3 bg-white/5 rounded-xl border border-white/10"><RefreshCcw className="w-5 h-5 text-white/60" /></button>
+            </div>
           </div>
 
           {/* Aperçu en temps réel des performances */}
@@ -258,6 +280,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   <div className="flex-1 bg-black/40 rounded-xl h-12 flex items-center justify-center overflow-hidden">
                     <input 
                       type="number" 
+                      min="0"
                       value={stock.maxWater || ''} 
                       onChange={(e) => {
                         const val = parseInt(e.target.value) || 0;
@@ -277,8 +300,8 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                 <div className="space-y-1 pt-2 border-t border-white/5">
                   <p className="text-[10px] font-black text-white/40 uppercase">Engin Alimenté ?</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: true}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.isWaterSupplied ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'bg-white/5 border-white/10 text-white/30'}`}>OUI</button>
-                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: false}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${!stock.isWaterSupplied ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-white/5 border-white/10 text-white/30'}`}>NON</button>
+                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: true, water: s.maxWater}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.isWaterSupplied ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'bg-white/5 border-white/10 text-white/30'}`}>OUI</button>
+                    <button onClick={() => setStock((s: any) => ({...s, isWaterSupplied: false, water: s.maxWater}))} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${!stock.isWaterSupplied ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-white/5 border-white/10 text-white/30'}`}>NON</button>
                   </div>
                 </div>
               </div>
@@ -290,6 +313,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   <div className="flex-1 bg-black/40 rounded-xl h-12 flex items-center justify-center overflow-hidden">
                     <input 
                       type="number" 
+                      min="0"
                       value={stock.maxFoam || ''} 
                       onChange={(e) => {
                         const val = parseInt(e.target.value) || 0;
@@ -340,6 +364,7 @@ function FoamApp({ onBack }: { onBack: () => void }) {
                   <div className="flex-1 bg-black/40 rounded-xl h-10 flex items-center justify-center overflow-hidden">
                     <input 
                       type="number" 
+                      min="0"
                       value={expansionRate || ''} 
                       onChange={(e) => {
                         const val = parseInt(e.target.value) || 0;
@@ -359,7 +384,12 @@ function FoamApp({ onBack }: { onBack: () => void }) {
           {isTimerActive ? (
              <button onClick={() => setMode('operational')} className="w-full bg-emerald-600 py-6 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><CheckCircle2/> Valider & Retour</button>
           ) : (
-             <button onClick={() => { setMode('operational'); setIsTimerActive(true); if (stock.isWaterSupplied) setStock((s: any) => ({ ...s, water: 3000 })); }} className="w-full bg-gradient-to-br from-orange-600 to-red-800 py-8 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><Flame/> Engager l'Attaque</button>
+             <button onClick={() => { 
+               setMode('operational'); 
+               setIsTimerActive(true); 
+               if (!foamStartTime) setFoamStartTime(Date.now());
+               if (stock.isWaterSupplied) setStock((s: any) => ({ ...s, water: 3000 })); 
+             }} className="w-full bg-gradient-to-br from-orange-600 to-red-800 py-8 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><Flame/> Engager l'Attaque</button>
           )}
         </div>
       ) : mode === 'operational' ? (
@@ -367,39 +397,94 @@ function FoamApp({ onBack }: { onBack: () => void }) {
           <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-2xl border border-white/10">
             <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" /><h2 className="text-[11px] font-black uppercase tracking-widest text-white/60">Intervention Active</h2></div>
             <div className="flex gap-2">
+              <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
+              <button onClick={() => setShowCOSModal(true)} className="p-3 bg-white/5 rounded-xl border border-white/10 text-emerald-400"><ClipboardList size={20}/></button>
               <button onClick={() => setMode('setup')} className="p-3 bg-white/5 rounded-xl border border-white/10"><Settings size={20}/></button>
             </div>
           </div>
 
           <div className="flex-1 flex flex-col lg:flex-row gap-4">
-            <div className="flex flex-row lg:flex-col gap-4 justify-center bg-white/[0.02] p-4 rounded-3xl border border-white/10">
-              <div className="flex flex-col items-center gap-2"><span className="text-[10px] font-mono text-blue-400">{Math.round(stock.water)}L</span><SegmentedGauge value={stock.water} max={stock.maxWater} color={stock.isWaterSupplied ? 'green' : (stock.water/stock.maxWater < 0.2 ? 'red' : 'blue')} /></div>
-              <div className="flex flex-col items-center gap-2"><span className="text-[10px] font-mono text-orange-400">{Math.round(stock.foam)}L</span><SegmentedGauge value={stock.foam} max={stock.maxFoam} color={stock.foam/stock.maxFoam < 0.2 ? 'red' : 'orange'} /></div>
+            {/* Gauges Column */}
+            <div className="flex flex-row lg:flex-col gap-4 justify-center bg-white/[0.02] p-6 rounded-[2.5rem] border border-white/10 lg:w-32 shrink-0">
+              <div className="flex flex-col items-center gap-3 flex-1">
+                {stock.isWaterSupplied ? (
+                  <div className="flex flex-col items-center animate-pulse">
+                    <Droplets size={20} className="text-emerald-400 mb-1"/>
+                    <span className="text-[9px] font-black text-emerald-400 uppercase text-center leading-tight">Alim.<br/>OUI</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <Droplets size={20} className="text-blue-400 mb-1"/>
+                    <span className="text-[10px] font-mono font-bold text-blue-400">{Math.round(stock.water)}L</span>
+                  </div>
+                )}
+                <div className="h-32 w-10 sm:w-12">
+                  <SegmentedGauge value={stock.water} max={stock.maxWater} color={stock.isWaterSupplied ? 'green' : (stock.water/stock.maxWater < 0.2 ? 'red' : 'blue')} />
+                </div>
+              </div>
+              <div className="w-px h-full lg:w-full lg:h-px bg-white/10"></div>
+              <div className="flex flex-col items-center gap-3 flex-1">
+                <div className="flex flex-col items-center">
+                  <Database size={20} className="text-orange-400 mb-1"/>
+                  <span className="text-[10px] font-mono font-bold text-orange-400">{Math.round(stock.foam)}L</span>
+                </div>
+                <div className="h-32 w-10 sm:w-12">
+                  <SegmentedGauge value={stock.foam} max={stock.maxFoam} color={stock.foam/stock.maxFoam < 0.2 ? 'red' : 'orange'} />
+                </div>
+              </div>
             </div>
 
+            {/* Metrics Column */}
             <div className="flex-1 flex flex-col gap-4">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div className="col-span-2 md:col-span-1 bg-white/[0.02] p-5 rounded-3xl border border-white/10 text-center"><p className="text-[9px] font-black text-white/40 uppercase">Temps</p><p className="text-5xl font-mono font-black">{formatTime(elapsedSeconds)}</p></div>
-                <div className={`p-5 rounded-3xl border text-center ${limitingAutonomy < 1 ? 'bg-red-500/10 border-red-500 animate-pulse' : 'bg-white/[0.02] border-white/10'}`}>
-                  <p className="text-[9px] font-black text-white/40 uppercase">Autonomie</p>
-                  <p className={`text-4xl font-mono font-black ${limitingAutonomy < 1 ? 'text-red-500' : 'text-emerald-400'}`}>{formatTime(limitingAutonomy*60)}</p>
-                  <p className={`text-[10px] font-black uppercase mt-1 ${limitingAutonomy < 1 ? 'text-red-400' : 'text-white/40'}`}>Limite: {limitingFactor}</p>
+              {/* Row 1: Critical Metrics */}
+              <div className="flex flex-col gap-2">
+                {/* Autonomy Card - Full Width */}
+                <div className={`relative overflow-hidden p-4 rounded-[2rem] border flex flex-col items-center justify-center gap-1 ${limitingAutonomy < 1 ? 'bg-red-500/10 border-red-500 animate-pulse' : 'bg-white/[0.02] border-white/10'}`}>
+                  <div className="w-full text-center"><p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Autonomie Restante</p></div>
+                  <p className={`text-5xl sm:text-6xl font-mono font-black tracking-tighter ${limitingAutonomy < 1 ? 'text-red-500' : 'text-white'}`}>
+                    {formatTime(limitingAutonomy*60)}
+                  </p>
+                  <div className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 ${limitingAutonomy < 1 ? 'bg-red-500 text-white' : 'bg-white/10 text-white/50'}`}>
+                    {limitingAutonomy < 1 ? <AlertTriangle size={10}/> : <Activity size={10}/>}
+                    Facteur Limitant : {limitingFactor}
+                  </div>
                 </div>
-                <div className="bg-orange-950/20 p-5 rounded-3xl border border-orange-500/30 text-center"><p className="text-[9px] font-black text-orange-400/60 uppercase">Mousse Produit</p><p className="text-4xl font-mono font-black">{safeFixed(totalFoamProduced, 0)} <span className="text-sm">m³</span></p></div>
+
+                {/* Time & Production - Side by Side */}
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Time Card */}
+                  <div className="bg-white/[0.02] p-4 rounded-[2rem] border border-white/10 flex flex-col items-center justify-center gap-1 relative overflow-hidden aspect-square">
+                     <div className="w-full text-center"><p className="text-[9px] font-black text-white/40 uppercase tracking-widest">Durée</p></div>
+                     <p className="text-3xl sm:text-4xl lg:text-5xl font-mono font-black text-blue-200 tracking-tighter">{formatTime(elapsedSeconds)}</p>
+                     <div className="px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400 text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+                        <History size={10}/> Chrono
+                     </div>
+                  </div>
+
+                  {/* Production Card */}
+                  <div className="bg-gradient-to-br from-orange-500/10 to-orange-900/10 p-4 rounded-[2rem] border border-orange-500/20 flex flex-col items-center justify-center gap-1 relative overflow-hidden aspect-square">
+                     <div className="w-full text-center"><p className="text-[9px] font-black text-orange-400/60 uppercase tracking-widest">Produit</p></div>
+                     <p className="text-3xl sm:text-4xl lg:text-5xl font-mono font-black text-orange-400 tracking-tighter">{safeFixed(totalFoamProduced, 0)}</p>
+                     <div className="px-2 py-1 rounded-lg bg-orange-500/10 text-orange-400 text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+                        <BoxSelect size={10}/> m³
+                     </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Débit Solution</span><span className="text-white text-xl">{flowRate} L/min</span></div>
-                  <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
+              {/* Row 2: Parameters Strip */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-white/[0.02] p-4 rounded-3xl border border-white/10 flex flex-col items-center justify-center gap-1">
+                  <span className="text-[9px] font-black uppercase text-white/30">Débit</span>
+                  <span className="text-xl font-mono font-black text-white">{flowRate} <span className="text-xs text-white/40">L/min</span></span>
                 </div>
-                <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Taux d'injection</span><span className="text-orange-400 text-xl">{concentration}%</span></div>
-                  <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
+                <div className="bg-white/[0.02] p-4 rounded-3xl border border-white/10 flex flex-col items-center justify-center gap-1">
+                  <span className="text-[9px] font-black uppercase text-white/30">Taux</span>
+                  <span className="text-xl font-mono font-black text-orange-400">{concentration}%</span>
                 </div>
-                <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40"><span>Foisonnement</span><span className="text-blue-400 text-xl">x{expansionRate}</span></div>
-                  <p className="text-[9px] text-white/30 italic">Modifier dans les paramètres</p>
+                <div className="bg-white/[0.02] p-4 rounded-3xl border border-white/10 flex flex-col items-center justify-center gap-1">
+                  <span className="text-[9px] font-black uppercase text-white/30">Foisonnement</span>
+                  <span className="text-xl font-mono font-black text-blue-400">x{expansionRate}</span>
                 </div>
               </div>
             </div>
@@ -412,25 +497,196 @@ function FoamApp({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col flex-1 justify-center space-y-6 animate-[fadeIn_0.5s_ease-out]">
+        <div className="flex flex-col flex-1 space-y-4 animate-[fadeIn_0.5s_ease-out]">
+          <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-2xl border border-white/10">
+            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full bg-emerald-500" /><h2 className="text-[11px] font-black uppercase tracking-widest text-white/60">Bilan Opération</h2></div>
+            <div className="flex gap-2">
+              <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
+            </div>
+          </div>
+          <div className="flex flex-col flex-1 justify-center space-y-6">
           <div className="bg-emerald-500/10 border border-emerald-500/30 p-8 rounded-[2rem] text-center space-y-4">
             <CheckCircle2 size={60} className="text-emerald-400 mx-auto" />
             <h2 className="text-3xl font-black uppercase">Bilan Mousse</h2>
             <div className="grid grid-cols-2 gap-4 pt-4">
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Eau</p><p className="text-2xl font-black">{Math.round(stock.maxWater - stock.water)}L</p></div>
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Eau Consommée</p><p className="text-2xl font-black">{Math.round(cumulativeWater)}L</p></div>
               <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Émulseur</p><p className="text-2xl font-black text-orange-400">{Math.round(stock.maxFoam - stock.foam)}L</p></div>
             </div>
             <div className="bg-emerald-500/20 p-4 rounded-2xl border border-emerald-500/40 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Mousse Produit</p><p className="text-4xl font-black">{safeFixed(totalFoamProduced, 1)} m³</p></div>
           </div>
-          <button onClick={() => { 
-            setMode('setup'); 
-            setElapsedSeconds(0); 
-            setIsTimerActive(false); 
-            setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false });
-            setConcentration(1);
-            setFlowRate(300);
-            setExpansionRate(250);
-          }} className="w-full py-6 bg-white text-black rounded-[2rem] font-black uppercase flex items-center justify-center gap-3"><RotateCcw/> Nouveau Calcul</button>
+          
+          <div className="flex gap-3">
+            <button onClick={() => {
+               const generateReport = () => {
+                 let report = `BILAN OPÉRATION MOUSSE - SDIS 77\n\n`;
+                 if (foamStartTime) report += `DÉBUT PRODUCTION : ${new Date(foamStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
+                 report += `DURÉE TOTALE : ${formatTime(elapsedSeconds)}\n`;
+                 report += `VOLUME EAU CONSOMMÉ : ${Math.round(cumulativeWater)} L\n`;
+                 report += `VOLUME ÉMULSEUR CONSOMMÉ : ${Math.round(stock.maxFoam - stock.foam)} L\n`;
+                 report += `VOLUME MOUSSE PRODUIT : ${safeFixed(totalFoamProduced, 1)} m³\n\n`;
+                 report += `PARAMÈTRES MOYENS :\n`;
+                 report += `- Débit Solution : ${flowRate} L/min\n`;
+                 report += `- Concentration : ${concentration}%\n`;
+                 report += `- Foisonnement : x${expansionRate}\n`;
+                 return report;
+               };
+               const txt = generateReport();
+               try { navigator.clipboard.writeText(txt); } catch(e){}
+               const blob = new Blob([txt], { type: 'text/plain' });
+               const url = URL.createObjectURL(blob);
+               const a = document.createElement('a');
+               a.href = url;
+               a.download = `RAPPORT_MOUSSE_${new Date().toLocaleDateString().replace(/\//g,'-')}.txt`;
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
+            }} className="flex-1 py-6 bg-blue-600/20 border border-blue-500/50 text-blue-400 rounded-[2rem] font-black uppercase flex items-center justify-center gap-2"><ClipboardList/> Exporter</button>
+
+            <button onClick={() => { 
+              setMode('setup'); 
+              setElapsedSeconds(0); 
+              setCumulativeWater(0);
+              setIsTimerActive(false); 
+              setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false });
+              setConcentration(1);
+              setFlowRate(300);
+              setExpansionRate(250);
+              setFoamStartTime(null);
+            }} className="flex-1 py-6 bg-white text-black rounded-[2rem] font-black uppercase flex items-center justify-center gap-2"><RotateCcw/> Nouveau</button>
+          </div>
+          </div>
+        </div>
+      )}
+
+      {showCOSModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl relative">
+            <button onClick={()=>setShowCOSModal(false)} className="absolute top-6 right-6 text-white/40"><X/></button>
+            <h2 className="text-xl font-black uppercase text-emerald-400 mb-6 flex items-center gap-3"><ClipboardList/> Point de Situation (COS)</h2>
+            
+            <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/30 text-center">
+                  <p className="text-[10px] font-black text-emerald-400/60 uppercase tracking-widest mb-1">Heure du Point</p>
+                  <p className="text-2xl font-mono font-black text-emerald-400 tracking-tighter">{new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+                <div className="bg-orange-500/10 p-4 rounded-2xl border border-orange-500/30 text-center">
+                  <p className="text-[10px] font-black text-orange-400/60 uppercase tracking-widest mb-1">Début Production</p>
+                  <input 
+                    type="time" 
+                    value={foamStartTime ? new Date(foamStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      const [h, m] = e.target.value.split(':').map(Number);
+                      const d = new Date();
+                      d.setHours(h);
+                      d.setMinutes(m);
+                      setFoamStartTime(d.getTime());
+                    }}
+                    className="bg-transparent text-xl font-mono font-black text-orange-400 tracking-tighter text-center w-full outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* FACTEUR LIMITANT - CRITIQUE */}
+              <div className={`p-5 rounded-2xl border-2 text-center ${limitingAutonomy < 5 ? 'bg-red-500/20 border-red-500 animate-pulse' : 'bg-orange-500/10 border-orange-500/50'}`}>
+                <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Facteur Limitant</p>
+                <p className="text-3xl font-black uppercase mb-2">{limitingFactor}</p>
+                <div className="w-full h-px bg-white/10 my-2"></div>
+                <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Rupture dans</p>
+                <p className="text-5xl font-mono font-black">{formatTime(limitingAutonomy * 60)}</p>
+              </div>
+
+              {/* CONSOMMATION */}
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
+                <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">Consommation Actuelle</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase text-white/50 font-bold">Eau</span>
+                    <span className="text-sm font-black uppercase text-white">{Math.round(actualWaterFlow)} L/min</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase text-white/50 font-bold">Émulseur ({concentration}%)</span>
+                    <span className="text-sm font-black uppercase text-orange-400">{safeFixed(actualFoamFlow, 1)} L/min</span>
+                  </div>
+                   <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                    <span className="text-[10px] uppercase text-white/50 font-bold">Production Mousse</span>
+                    <span className="text-sm font-black uppercase text-emerald-400">{safeFixed((flowRate * expansionRate) / 1000, 1)} m³/min</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* STOCK RESTANT */}
+              <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
+                <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">Stock Restant</h3>
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="text-center">
+                      <p className="text-[10px] font-bold text-blue-400 uppercase">Eau</p>
+                      <p className="text-xl font-black">{stock.isWaterSupplied ? 'Alimenté' : `${Math.round(stock.water)} L`}</p>
+                   </div>
+                   <div className="text-center">
+                      <p className="text-[10px] font-bold text-orange-400 uppercase">Émulseur</p>
+                      <p className="text-xl font-black">{Math.round(stock.foam)} L</p>
+                   </div>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              <button onClick={()=>{
+                const generateReport = () => {
+                  let report = `POINT DE SITUATION MOUSSE (COS) - SDIS 77\n`;
+                  report += `HEURE : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
+                  if (foamStartTime) report += `DÉBUT PRODUCTION : ${new Date(foamStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
+                  report += `\nFACTEUR LIMITANT : ${limitingFactor}\n`;
+                  report += `TEMPS AVANT RUPTURE : ${formatTime(limitingAutonomy * 60)}\n\n`;
+                  report += `CONSOMMATION :\n`;
+                  report += `- Eau : ${Math.round(actualWaterFlow)} L/min\n`;
+                  report += `- Émulseur : ${safeFixed(actualFoamFlow, 1)} L/min\n`;
+                  report += `- Production Mousse : ${safeFixed((flowRate * expansionRate) / 1000, 1)} m³/min\n\n`;
+                  report += `STOCK RESTANT :\n`;
+                  report += `- Eau : ${stock.isWaterSupplied ? 'Alimenté' : Math.round(stock.water) + ' L'}\n`;
+                  report += `- Émulseur : ${Math.round(stock.foam)} L\n`;
+                  return report;
+                };
+                const txt = generateReport();
+                try { navigator.clipboard.writeText(txt); } catch(e){}
+                setShowCOSModal(false);
+              }} className="py-4 bg-emerald-500 text-black rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20">Copier</button>
+              
+              <button onClick={()=>{
+                 const generateReport = () => {
+                  let report = `POINT DE SITUATION MOUSSE (COS) - SDIS 77\n`;
+                  report += `HEURE : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
+                  if (foamStartTime) report += `DÉBUT PRODUCTION : ${new Date(foamStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
+                  report += `\nFACTEUR LIMITANT : ${limitingFactor}\n`;
+                  report += `TEMPS AVANT RUPTURE : ${formatTime(limitingAutonomy * 60)}\n\n`;
+                  report += `CONSOMMATION :\n`;
+                  report += `- Eau : ${Math.round(actualWaterFlow)} L/min\n`;
+                  report += `- Émulseur : ${safeFixed(actualFoamFlow, 1)} L/min\n`;
+                  report += `- Production Mousse : ${safeFixed((flowRate * expansionRate) / 1000, 1)} m³/min\n\n`;
+                  report += `STOCK RESTANT :\n`;
+                  report += `- Eau : ${stock.isWaterSupplied ? 'Alimenté' : Math.round(stock.water) + ' L'}\n`;
+                  report += `- Émulseur : ${Math.round(stock.foam)} L\n`;
+                  return report;
+                };
+                const txt = generateReport();
+                const blob = new Blob([txt], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `SITUATION_MOUSSE_${new Date().toLocaleTimeString().replace(/:/g,'-')}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                setShowCOSModal(false);
+              }} className="py-4 bg-blue-600/20 border border-blue-500/50 text-blue-400 rounded-2xl font-black uppercase tracking-widest">Télécharger</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -513,7 +769,7 @@ const VENT_SPECS = [
   }
 ];
 
-function VentilationApp({ onBack }: { onBack: () => void }) {
+function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => void }) {
   const savedState = React.useRef(loadPersistedState('sdis77_vent_state')).current;
   const [view, setView] = useState<'menu' | 'operational' | 'specs'>(savedState?.view || 'menu');
   const [step, setStep] = useState(savedState?.step || 1); 
@@ -584,6 +840,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
             <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20"><Wind className="w-5 h-5 sm:w-6 sm:h-6 text-white" /></div>
             <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">SDIS 77</p></div>
           </div>
+          <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
         </div>
         <div className="flex-1 flex flex-col justify-center gap-6">
            <button onClick={() => setView('operational')} className="group relative overflow-hidden bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 p-8 rounded-[2rem] transition-all duration-300 text-left">
@@ -622,6 +879,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
                   <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em]">Matériel Ventilation</p>
                 </div>
               </div>
+              <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
           </div>
           
           <div className="flex-1 overflow-y-auto space-y-6 pr-1 hide-scrollbar pb-10">
@@ -713,6 +971,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               {isVentilating && <div className="bg-emerald-500/20 border border-emerald-500/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse"><Wind className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400 font-mono font-black text-xs">{safeFormatTime(elapsedSeconds)}</span></div>}
+              <button onClick={onHome} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
               <button onClick={() => setShowPMTTModal(true)} className="p-2.5 bg-white/5 rounded-xl border border-white/10 text-emerald-400"><ClipboardList size={22}/></button>
             </div>
           </div>
@@ -837,30 +1096,115 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
           </div>
         </>
       ) : (
-        <div className="flex flex-col flex-1 justify-center space-y-6 animate-fadeIn">
+        <div className="flex flex-col flex-1 space-y-4 animate-fadeIn">
+           <div className="flex justify-between items-center bg-white/[0.02] p-3 rounded-2xl border border-white/10">
+            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full bg-emerald-500" /><h2 className="text-[11px] font-black uppercase tracking-widest text-white/60">Bilan Opération</h2></div>
+            <div className="flex gap-2">
+              <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
+            </div>
+          </div>
+           <div className="flex flex-col flex-1 justify-center space-y-6">
            <div className="bg-emerald-500/10 border border-emerald-500/30 p-8 rounded-[2rem] text-center space-y-4">
               <CheckCircle2 size={60} className="text-emerald-400 mx-auto" /><h2 className="text-3xl font-black uppercase">Bilan de l'Opération</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-[10px] font-black text-white/40 uppercase">Durée Totale</p><p className="text-2xl font-black">{safeFormatTime(totalSeconds)}</p></div>
                 <div className="bg-black/40 p-4 rounded-2xl border border-white/5"><p className="text-[10px] font-black text-white/40 uppercase">Phases</p><p className="text-2xl font-black">{history.length+1}</p></div>
               </div>
-              <div className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-2 text-left">
-                <h3 className="text-[10px] font-black text-white/40 uppercase mb-2">Matériels utilisés</h3>
-                {Object.entries(materials).map(([k,q]) => (q as number) > 0 ? <div key={k} className="flex justify-between text-xs font-bold uppercase"><span>{k}</span><span>x{q}</span></div> : null)}
+              
+              <div className="space-y-4 text-left">
+                <h3 className="text-[10px] font-black text-white/40 uppercase border-b border-white/10 pb-2">Détail des Phases</h3>
+                {/* Historique des phases précédentes */}
+                {history.map((h, i) => (
+                  <div key={i} className="bg-white/5 p-4 rounded-2xl border border-white/10 space-y-2">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                      <span className="text-xs font-black text-emerald-400 uppercase">Phase {h.phase}</span>
+                      <span className="text-[10px] font-mono opacity-60">{h.startTime} • {h.duration}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div><span className="text-white/40 block">Stratégie</span><span className="font-bold">{getPStr(h.pmtt)} / {getMStr(h.pmtt)}</span></div>
+                      <div><span className="text-white/40 block">Technique</span><span className="font-bold">{getTStr(h.pmtt)}</span></div>
+                      <div className="col-span-2"><span className="text-white/40 block">Matériel</span><span className="font-bold text-white/80">{Object.entries(h.materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} (x${q})`).join(', ') || 'Aucun'}</span></div>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Phase finale / actuelle */}
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 space-y-2 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-2 opacity-10"><CheckCircle2 size={40}/></div>
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-xs font-black text-white uppercase">Phase {history.length + 1} (Finale)</span>
+                    <span className="text-[10px] font-mono opacity-60">{startTime || 'N/A'} • {safeFormatTime(elapsedSeconds)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div><span className="text-white/40 block">Stratégie</span><span className="font-bold">{getPStr(pmtt)} / {getMStr(pmtt)}</span></div>
+                    <div><span className="text-white/40 block">Technique</span><span className="font-bold">{getTStr(pmtt)}</span></div>
+                    <div className="col-span-2"><span className="text-white/40 block">Matériel</span><span className="font-bold text-white/80">{Object.entries(materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} (x${q})`).join(', ') || 'Aucun'}</span></div>
+                  </div>
+                </div>
               </div>
            </div>
-           <button onClick={() => { 
-             setStep(1); 
-             setIsVentilating(false);
-             setElapsedSeconds(0);
-             setStartTime(null);
-             setEngagementARI(null);
-             setHistory([]);
-             setWindDir(null);
-             setChecks({ vent: false, batiment: false, stopFumee: false, lance: false, autorise: false, influenceFoyer: false });
-             setPmtt({ naturel: false, force: false, horizontale: false, verticale: false, defensive: false, vpp: false, depression: false });
-             setMaterials({ batfan: 0, mt296: 0, sax: 0, stopPetit: 0, stopGrand: 0 });
-           }} className="w-full py-6 bg-white text-black rounded-[2rem] font-black uppercase">Nouvelle Intervention</button>
+           
+           <div className="flex gap-3">
+             <button onClick={() => {
+                const generateReport = () => {
+                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE - SDIS 77\n\n`;
+                  report += `DURÉE TOTALE : ${safeFormatTime(totalSeconds)}\n`;
+                  report += `NOMBRE DE PHASES : ${history.length + 1}\n\n`;
+                  
+                  // Phases historiques
+                  history.forEach((h) => {
+                    report += `--- PHASE ${h.phase} ---\n`;
+                    report += `Début : ${h.startTime}\n`;
+                    report += `Durée : ${h.duration}\n`;
+                    report += `Stratégie : ${getPStr(h.pmtt)} / ${getMStr(h.pmtt)} / Défensive / ${getTStr(h.pmtt)}\n`;
+                    report += `Engagement : ${h.engagementARI === 'ARI' ? 'Avec ARI' : 'Sans ARI'}\n`;
+                    const mat = Object.entries(h.materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} x${q}`).join(', ') || 'Aucun';
+                    report += `Matériel : ${mat}\n\n`;
+                  });
+                  
+                  // Phase finale
+                  report += `--- PHASE ${history.length + 1} (FINALE) ---\n`;
+                  report += `Début : ${startTime || 'N/A'}\n`;
+                  report += `Durée : ${safeFormatTime(elapsedSeconds)}\n`;
+                  report += `Stratégie : ${getPStr(pmtt)} / ${getMStr(pmtt)} / Défensive / ${getTStr(pmtt)}\n`;
+                  report += `Engagement : ${engagementARI === 'ARI' ? 'Avec ARI' : 'Sans ARI'}\n`;
+                  const matFinal = Object.entries(materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} x${q}`).join(', ') || 'Aucun';
+                  report += `Matériel : ${matFinal}\n`;
+                  
+                  return report;
+                };
+                
+                const txt = generateReport();
+                
+                // Copy to clipboard
+                try { navigator.clipboard.writeText(txt); } catch(e){}
+                
+                // Download file
+                const blob = new Blob([txt], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `RAPPORT_VENTILATION_${new Date().toLocaleDateString().replace(/\//g,'-')}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+             }} className="flex-1 py-6 bg-blue-600/20 border border-blue-500/50 text-blue-400 rounded-[2rem] font-black uppercase flex items-center justify-center gap-2"><ClipboardList/> Exporter Rapport</button>
+             
+             <button onClick={() => { 
+               setStep(1); 
+               setIsVentilating(false);
+               setElapsedSeconds(0);
+               setStartTime(null);
+               setEngagementARI(null);
+               setHistory([]);
+               setWindDir(null);
+               setChecks({ vent: false, batiment: false, stopFumee: false, lance: false, autorise: false, influenceFoyer: false });
+               setPmtt({ naturel: false, force: false, horizontale: false, verticale: false, defensive: false, vpp: false, depression: false });
+               setMaterials({ batfan: 0, mt296: 0, sax: 0, stopPetit: 0, stopGrand: 0 });
+             }} className="flex-1 py-6 bg-white text-black rounded-[2rem] font-black uppercase flex items-center justify-center gap-2"><RotateCcw/> Nouvelle Inter.</button>
+           </div>
+           </div>
         </div>
       )}
 
@@ -868,17 +1212,23 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl relative">
             <button onClick={()=>setShowPMTTModal(false)} className="absolute top-6 right-6 text-white/40"><X/></button>
-            <h2 className="text-xl font-black uppercase text-emerald-400 mb-6 flex items-center gap-3"><ClipboardList/> Présentation COS</h2>
+            <h2 className="text-xl font-black uppercase text-emerald-400 mb-6 flex items-center gap-3"><ClipboardList/> Rapport & Synthèse</h2>
             <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
+              
+              <div className="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/30 text-center">
+                <p className="text-[10px] font-black text-emerald-400/60 uppercase tracking-widest mb-1">Heure du Point</p>
+                <p className="text-3xl font-mono font-black text-emerald-400 tracking-tighter">{new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+              </div>
+
               {startTime && (
                 <div className="bg-emerald-500/10 p-5 rounded-2xl border border-emerald-500/30 text-center">
-                  <p className="text-[10px] font-black text-emerald-400/60 uppercase tracking-widest mb-1">Début de la VO</p>
+                  <p className="text-[10px] font-black text-emerald-400/60 uppercase tracking-widest mb-1">Début Phase Actuelle</p>
                   <p className="text-5xl font-mono font-black text-emerald-400 tracking-tighter">{startTime}</p>
                 </div>
               )}
               
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
-                <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">PMTT Actuel</h3>
+                <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">Situation Actuelle</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase text-white/50 font-bold">Principe</span>
@@ -887,10 +1237,6 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase text-white/50 font-bold">Méthode</span>
                     <span className="text-sm font-black uppercase text-white">{getMStr(pmtt)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] uppercase text-white/50 font-bold">Tactique</span>
-                    <span className="text-sm font-black uppercase text-blue-400">DÉFENSIVE</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase text-white/50 font-bold">Technique</span>
@@ -906,7 +1252,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
               </div>
 
               <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
-                <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">Matériels Engagés</h3>
+                <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">Matériels Engagés (Total)</h3>
                 <div className="space-y-2">
                   {Object.entries(materials).filter(([_, q]) => (q as number) > 0).length > 0 ? (
                     Object.entries(materials).filter(([_, q]) => (q as number) > 0).map(([k, q]) => (
@@ -923,30 +1269,103 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 
               {history.length > 0 && (
                 <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
-                  <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">Historique Séquences</h3>
-                  <div className="space-y-2">
+                  <h3 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2 tracking-widest">Historique Phases</h3>
+                  <div className="space-y-3">
                     {history.map((h, i) => (
-                      <div key={i} className="flex justify-between items-center text-[10px] border-b border-white/5 pb-1 last:border-0">
-                        <span className="text-white/50 font-mono">Phase {h.phase}</span>
-                        <span className="font-bold text-white">{h.duration}</span>
-                        <span className="text-white/30">{getPStr(h.pmtt)}/{getTStr(h.pmtt)}</span>
+                      <div key={i} className="text-[10px] border-b border-white/5 pb-2 last:border-0">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-emerald-400 font-black uppercase">Phase {h.phase}</span>
+                          <span className="font-mono text-white/60">{h.startTime}</span>
+                        </div>
+                        <div className="text-white/40 mb-1">{getPStr(h.pmtt)} / {getMStr(h.pmtt)} / {getTStr(h.pmtt)}</div>
+                        <div className="text-white/30 italic">
+                          {Object.entries(h.materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} x${q}`).join(', ')}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
             </div>
-            <button onClick={()=>{
-              const matTxt = Object.entries(materials).filter(([_, q]) => (q as number) > 0).map(([k, q]) => `${VENT_MATERIAL_LABELS[k]}: ${q}`).join(', ') || 'Aucun';
-              const historyTxt = history.length > 0 ? '\n\nHISTORIQUE:\n' + history.map(h => `Phase ${h.phase}: ${h.duration} (${getPStr(h.pmtt)}/${getTStr(h.pmtt)})`).join('\n') : '';
-              const txt = `RÉCAP VO SDIS 77\n\nDébut: ${startTime || 'N/A'}\nPMTT: ${getPStr(pmtt)} / ${getMStr(pmtt)} / Défensif / ${getTStr(pmtt)}\nEngagement: ${engagementARI || 'N/A'}\nIncidence Foyer: AUCUNE\nMatériel: ${matTxt}${historyTxt}`;
-              try {
-                navigator.clipboard.writeText(txt);
-              } catch (err) {
-                console.error("Failed to copy:", err);
-              }
-              setShowPMTTModal(false);
-            }} className="w-full mt-6 py-4 bg-emerald-500 text-black rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20">Copier le rapport</button>
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              <button onClick={()=>{
+                const generateReport = () => {
+                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE - SDIS 77\n`;
+                  report += `HEURE DU POINT : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n\n`;
+                  
+                  // Phases historiques
+                  history.forEach((h) => {
+                    report += `--- PHASE ${h.phase} ---\n`;
+                    report += `Début : ${h.startTime}\n`;
+                    report += `Durée : ${h.duration}\n`;
+                    report += `Stratégie : ${getPStr(h.pmtt)} / ${getMStr(h.pmtt)} / Défensive / ${getTStr(h.pmtt)}\n`;
+                    report += `Engagement : ${h.engagementARI === 'ARI' ? 'Avec ARI' : 'Sans ARI'}\n`;
+                    const mat = Object.entries(h.materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} x${q}`).join(', ') || 'Aucun';
+                    report += `Matériel : ${mat}\n\n`;
+                  });
+                  
+                  // Phase actuelle
+                  report += `--- PHASE ${history.length + 1} (ACTUELLE) ---\n`;
+                  report += `Début : ${startTime || 'N/A'}\n`;
+                  report += `Durée : ${safeFormatTime(elapsedSeconds)} (en cours)\n`;
+                  report += `Stratégie : ${getPStr(pmtt)} / ${getMStr(pmtt)} / Défensive / ${getTStr(pmtt)}\n`;
+                  report += `Engagement : ${engagementARI === 'ARI' ? 'Avec ARI' : 'Sans ARI'}\n`;
+                  const matFinal = Object.entries(materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} x${q}`).join(', ') || 'Aucun';
+                  report += `Matériel : ${matFinal}\n`;
+                  
+                  return report;
+                };
+                
+                const txt = generateReport();
+                try {
+                  navigator.clipboard.writeText(txt);
+                } catch (err) {
+                  console.error("Failed to copy:", err);
+                }
+                setShowPMTTModal(false);
+              }} className="py-4 bg-emerald-500 text-black rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20">Copier</button>
+              
+              <button onClick={()=>{
+                 const generateReport = () => {
+                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE - SDIS 77\n`;
+                  report += `HEURE DU POINT : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n\n`;
+                  
+                  // Phases historiques
+                  history.forEach((h) => {
+                    report += `--- PHASE ${h.phase} ---\n`;
+                    report += `Début : ${h.startTime}\n`;
+                    report += `Durée : ${h.duration}\n`;
+                    report += `Stratégie : ${getPStr(h.pmtt)} / ${getMStr(h.pmtt)} / Défensive / ${getTStr(h.pmtt)}\n`;
+                    report += `Engagement : ${h.engagementARI === 'ARI' ? 'Avec ARI' : 'Sans ARI'}\n`;
+                    const mat = Object.entries(h.materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} x${q}`).join(', ') || 'Aucun';
+                    report += `Matériel : ${mat}\n\n`;
+                  });
+                  
+                  // Phase actuelle
+                  report += `--- PHASE ${history.length + 1} (ACTUELLE) ---\n`;
+                  report += `Début : ${startTime || 'N/A'}\n`;
+                  report += `Durée : ${safeFormatTime(elapsedSeconds)} (en cours)\n`;
+                  report += `Stratégie : ${getPStr(pmtt)} / ${getMStr(pmtt)} / Défensive / ${getTStr(pmtt)}\n`;
+                  report += `Engagement : ${engagementARI === 'ARI' ? 'Avec ARI' : 'Sans ARI'}\n`;
+                  const matFinal = Object.entries(materials).filter(([_,q])=>(q as number)>0).map(([k,q])=>`${VENT_MATERIAL_LABELS[k]} x${q}`).join(', ') || 'Aucun';
+                  report += `Matériel : ${matFinal}\n`;
+                  
+                  return report;
+                };
+                
+                const txt = generateReport();
+                const blob = new Blob([txt], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `RAPPORT_VENTILATION_${new Date().toLocaleDateString().replace(/\//g,'-')}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                setShowPMTTModal(false);
+              }} className="py-4 bg-blue-600/20 border border-blue-500/50 text-blue-400 rounded-2xl font-black uppercase tracking-widest">Télécharger</button>
+            </div>
           </div>
         </div>
       )}
@@ -957,7 +1376,7 @@ function VentilationApp({ onBack }: { onBack: () => void }) {
 // ==========================================
 // MODULE 3 : CALCULATEUR SURFACE & MOYENS
 // ==========================================
-function SurfaceApp({ onBack }: { onBack: () => void }) {
+function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void }) {
   const savedState = React.useRef(loadPersistedState('sdis77_surface_state')).current;
   const [shape, setShape] = useState<'rect' | 'circle'>(savedState?.shape || 'rect');
   const [dim1, setDim1] = useState<number>(() => { const v = savedState?.dim1; return (typeof v === 'number' && isFinite(v)) ? v : 0; });
@@ -1041,7 +1460,10 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
               <p className="text-[10px] text-blue-400/60">Aide à la Décision • Surface & Moyens (SDIS 77)</p>
             </div>
           </div>
-          <Ruler className="text-blue-400" size={32}/>
+          <div className="flex gap-2">
+             <button onClick={onHome} className="p-2 bg-blue-900/50 border border-blue-400/30 rounded hover:bg-blue-800 transition-colors"><Home size={20} className="text-blue-300"/></button>
+             <Ruler className="text-blue-400" size={32}/>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1373,7 +1795,7 @@ function SurfaceApp({ onBack }: { onBack: () => void }) {
 // ==========================================
 // MENU MOUSSE (NOUVELLE ARCHITECTURE)
 // ==========================================
-function FoamMenu({ onNavigate, onBack }: { onNavigate: (route: string) => void, onBack: () => void }) {
+function FoamMenu({ onNavigate, onBack, onHome }: { onNavigate: (route: string) => void, onBack: () => void, onHome: () => void }) {
   return (
     <div className="flex flex-col flex-1 p-6 items-center justify-center animate-fadeIn relative bg-[#050505]">
       <div className="w-full max-w-md space-y-6">
@@ -1390,6 +1812,7 @@ function FoamMenu({ onNavigate, onBack }: { onNavigate: (route: string) => void,
               <p className="text-[9px] sm:text-[10px] font-bold text-orange-400 uppercase tracking-widest">Menu Principal</p>
             </div>
           </div>
+          <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
         </div>
 
         <button onClick={() => onNavigate('foam-live')} className="w-full group relative overflow-hidden bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 p-8 rounded-[2rem] transition-all duration-300 text-left">
@@ -1419,6 +1842,13 @@ function FoamMenu({ onNavigate, onBack }: { onNavigate: (route: string) => void,
 // ==========================================
 export default function App() {
   const [route, setRoute] = useState('home');
+  const [, setTick] = useState(0); // Force update for live widgets
+
+  // Live clock for widgets
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Gestion de l'historique de navigation
   useEffect(() => {
@@ -1543,13 +1973,13 @@ export default function App() {
             <div className="mt-auto pt-10 text-[8px] font-mono text-white/20 uppercase tracking-[0.3em]">Outils numérique par <span className="text-white font-bold">Cucalon & Decarreaux</span></div>
           </div>
         ) : route === 'foam-menu' ? (
-          <FoamMenu onNavigate={navigateTo} onBack={()=>window.history.back()} />
+          <FoamMenu onNavigate={navigateTo} onBack={()=>window.history.back()} onHome={()=>navigateTo('home')} />
         ) : route === 'foam-live' ? (
-          <FoamApp onBack={()=>window.history.back()} />
+          <FoamApp onBack={()=>window.history.back()} onHome={()=>navigateTo('home')} />
         ) : route === 'surface' ? (
-          <SurfaceApp onBack={()=>window.history.back()} />
+          <SurfaceApp onBack={()=>window.history.back()} onHome={()=>navigateTo('home')} />
         ) : (
-          <VentilationApp onBack={()=>window.history.back()} />
+          <VentilationApp onBack={()=>window.history.back()} onHome={()=>navigateTo('home')} />
         )}
 
         <style>{`
