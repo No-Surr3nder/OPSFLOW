@@ -312,7 +312,7 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
             <div className="flex items-center gap-3">
               <button onClick={onBack} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><ChevronLeft className="w-6 h-6 text-white/60" /></button>
               <div className="bg-gradient-to-br from-orange-500 to-red-600 p-2.5 rounded-xl"><Flame className="w-6 h-6 text-white" /></div>
-              <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Calcul Mousse</h1><p className="text-[9px] sm:text-[10px] font-bold text-orange-400 uppercase tracking-widest">SDIS 77</p></div>
+              <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Calcul Mousse</h1><p className="text-[9px] sm:text-[10px] font-bold text-orange-400 uppercase tracking-widest">Opérationnel</p></div>
             </div>
             <div className="flex gap-2">
               <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
@@ -657,7 +657,7 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
           <div className="flex gap-3">
             <button onClick={() => {
                const generateReport = () => {
-                 let report = `BILAN OPÉRATION MOUSSE - SDIS 77\n\n`;
+                 let report = `BILAN OPÉRATION MOUSSE\n\n`;
                  if (foamStartTime) report += `DÉBUT PRODUCTION : ${new Date(foamStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
                  report += `DURÉE TOTALE : ${formatTime(elapsedSeconds)}\n`;
                  report += `VOLUME EAU CONSOMMÉ : ${Math.round(cumulativeWater)} L\n`;
@@ -781,7 +781,7 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
             <div className="grid grid-cols-2 gap-3 mt-6">
               <button onClick={()=>{
                 const generateReport = () => {
-                  let report = `POINT DE SITUATION MOUSSE (COS) - SDIS 77\n`;
+                  let report = `POINT DE SITUATION MOUSSE (COS)\n`;
                   report += `HEURE : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
                   if (foamStartTime) report += `DÉBUT PRODUCTION : ${new Date(foamStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
                   report += `\nFACTEUR LIMITANT : ${limitingFactor}\n`;
@@ -802,7 +802,7 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
               
               <button onClick={()=>{
                  const generateReport = () => {
-                  let report = `POINT DE SITUATION MOUSSE (COS) - SDIS 77\n`;
+                  let report = `POINT DE SITUATION MOUSSE (COS)\n`;
                   report += `HEURE : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
                   if (foamStartTime) report += `DÉBUT PRODUCTION : ${new Date(foamStartTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n`;
                   report += `\nFACTEUR LIMITANT : ${limitingFactor}\n`;
@@ -1050,7 +1050,7 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
           <div className="flex items-center gap-3">
             <button onClick={onBack} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"><ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white/60" /></button>
             <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20"><Wind className="w-5 h-5 sm:w-6 sm:h-6 text-white" /></div>
-            <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">SDIS 77</p></div>
+            <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Opérationnelle</p></div>
           </div>
           <button onClick={onHome} className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
         </div>
@@ -1179,7 +1179,7 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
             <div className="flex items-center gap-3">
               <button onClick={() => setView('menu')} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"><ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white/60" /></button>
               <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-2.5 rounded-xl shadow-lg shadow-emerald-500/20"><Wind className="w-5 h-5 sm:w-6 sm:h-6 text-white" /></div>
-              <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{history.length > 0 ? `Phase ${history.length+1}` : "SDIS 77"}</p></div>
+              <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{history.length > 0 ? `Phase ${history.length+1}` : "Opérationnelle"}</p></div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <button onClick={onHome} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
@@ -1413,7 +1413,7 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
            <div className="flex gap-3">
              <button onClick={() => {
                 const generateReport = () => {
-                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE - SDIS 77\n\n`;
+                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE\n\n`;
                   report += `DURÉE TOTALE : ${safeFormatTime(totalSeconds)}\n`;
                   report += `NOMBRE DE PHASES : ${history.length + 1}\n\n`;
                   
@@ -1556,7 +1556,7 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
             <div className="grid grid-cols-2 gap-3 mt-6">
               <button onClick={()=>{
                 const generateReport = () => {
-                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE - SDIS 77\n`;
+                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE\n`;
                   report += `HEURE DU POINT : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n\n`;
                   
                   // Phases historiques
@@ -1593,7 +1593,7 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
               
               <button onClick={()=>{
                  const generateReport = () => {
-                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE - SDIS 77\n`;
+                  let report = `RÉCAPITULATIF VENTILATION OPÉRATIONNELLE\n`;
                   report += `HEURE DU POINT : ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}\n\n`;
                   
                   // Phases historiques
@@ -1722,7 +1722,7 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
             <button onClick={onBack} className="p-2 bg-blue-900/50 border border-blue-400/30 rounded hover:bg-blue-800 transition-colors"><ChevronLeft/></button>
             <div>
               <h1 className="text-2xl font-black uppercase tracking-widest text-blue-300">Planificateur</h1>
-              <p className="text-[10px] text-blue-400/60">Aide à la Décision • Surface & Moyens (SDIS 77)</p>
+              <p className="text-[10px] text-blue-400/60">Aide à la Décision • Surface & Moyens</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -1786,7 +1786,7 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
 
           {/* Section 2: Tactique SDIS 77 */}
           <div className="bg-blue-900/40 border-2 border-blue-400/20 p-6 rounded-xl space-y-6 backdrop-blur-sm">
-            <h2 className="text-sm font-bold uppercase text-blue-300 flex items-center gap-2"><Settings size={16}/> 2. Tactique (SDIS 77)</h2>
+            <h2 className="text-sm font-bold uppercase text-blue-300 flex items-center gap-2"><Settings size={16}/> 2. Tactique</h2>
             
             <div className="space-y-4">
               {/* Nature du Feu */}
@@ -1931,7 +1931,7 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
 
           {/* Suggestion Engins */}
           <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-3">
-            <h3 className="text-[10px] font-black uppercase text-blue-400/60">Engins SDIS 77 Capables (Autonomie Complète)</h3>
+            <h3 className="text-[10px] font-black uppercase text-blue-400/60">Engins Capables (Autonomie Complète)</h3>
             {capableVehicles.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {capableVehicles.map((v, i) => (
@@ -1962,7 +1962,7 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
           {/* RÉFÉRENTIEL CAPACITÉS ENGINS */}
           <div className="pt-6 border-t border-white/10 space-y-4">
             <h3 className="text-[10px] font-black uppercase text-blue-300 tracking-widest flex items-center gap-2">
-              <Database size={14}/> Référentiel Capacités Engins (SDIS 77)
+              <Database size={14}/> Référentiel Capacités Engins
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="bg-white/5 border border-white/10 p-4 rounded-2xl space-y-3">

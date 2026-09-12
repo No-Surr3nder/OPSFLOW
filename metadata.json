@@ -1,6 +1,6 @@
 {
   "name": "OPS FLOW",
-  "description": "Outil tactique pour les pompiers du SDIS 77 : Calculateur Mousse et Assistant Ventilation Opérationnelle.",
+  "description": "Outil tactique : Calculateur Mousse et Assistant Ventilation Opérationnelle.",
   "requestFramePermissions": [
     "geolocation"
   ],
