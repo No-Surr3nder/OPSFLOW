@@ -2,11 +2,23 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   Flame, Droplets, Zap, Plus, Minus, RefreshCcw, ChevronRight, CheckCircle2, 
   Pause, Play, RotateCcw, Database, Crosshair, Activity, ShieldAlert, 
-  Settings, Wind, ChevronLeft, Eye, Map, Thermometer, Users, AlertTriangle, 
+  Settings, Wind, ChevronLeft, Eye, Map as MapIcon, Thermometer, Users, AlertTriangle, 
   StopCircle, CheckSquare, DoorClosed, ClipboardList, X, ArrowUp, ArrowRight, 
   ArrowDown, History, Moon, Compass, FileText, Ruler, Calculator, Square, Circle, BoxSelect,
-  ArrowDownToLine, ArrowUpFromLine, Info, Home
+  ArrowDownToLine, ArrowUpFromLine, Info, Home, MapPin, Navigation
 } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for Leaflet default icon in React
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 // --- CONSTANTES ---
 const PRESET_FLOW_RATES = [100, 200, 250, 300, 400, 500];
@@ -126,14 +138,21 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
   const [cumulativeWater, setCumulativeWater] = useState(savedState?.cumulativeWater || 0);
   const [isTimerActive, setIsTimerActive] = useState(savedState?.isTimerActive || false);
   const [foamStartTime, setFoamStartTime] = useState<number | null>(savedState?.foamStartTime || null);
+  const [emulseurType, setEmulseurType] = useState<'biofor' | 'ecopol'>(savedState?.emulseurType || 'ecopol');
+  const [targetDecantation, setTargetDecantation] = useState<number>(savedState?.targetDecantation || 25);
   const [showCOSModal, setShowCOSModal] = useState(false);
+  const [hasShown3MinWarning, setHasShown3MinWarning] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [showDecantInfo, setShowDecantInfo] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
+  const [consumptionHistory, setConsumptionHistory] = useState<{ time: string, eau: number, mousse: number }[]>(savedState?.consumptionHistory || []);
 
   // Persistance de l'état
   useEffect(() => {
     localStorage.setItem('sdis77_foam_state', JSON.stringify({
-      mode, concentration, flowRate, expansionRate, elapsedSeconds, cumulativeWater, isTimerActive, foamStartTime, lastTimestamp: Date.now()
+      mode, concentration, flowRate, expansionRate, elapsedSeconds, cumulativeWater, isTimerActive, foamStartTime, consumptionHistory, emulseurType, targetDecantation, lastTimestamp: Date.now()
     }));
-  }, [mode, concentration, flowRate, expansionRate, elapsedSeconds, cumulativeWater, isTimerActive, foamStartTime]);
+  }, [mode, concentration, flowRate, expansionRate, elapsedSeconds, cumulativeWater, isTimerActive, foamStartTime, consumptionHistory, emulseurType, targetDecantation]);
 
   const [stock, setStock] = useState(() => {
     try {
@@ -222,11 +241,27 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
     return num.toFixed(digits);
   };
 
+  const decantationSeconds = (targetDecantation / 25) * (emulseurType === 'biofor' ? 2 : 30) * 60;
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isTimerActive) {
       interval = setInterval(() => {
-        setElapsedSeconds(s => s + 1);
+        setElapsedSeconds(s => {
+          const newS = s + 1;
+          if (newS % 5 === 0) {
+            setConsumptionHistory(prev => {
+              const hist = [...prev, {
+                time: safeFormatTime(newS),
+                eau: Math.round(cumulativeWater + (actualWaterFlow / 60) * (newS - s)),
+                mousse: Math.round((stock.maxFoam - stock.foam) + (actualFoamFlow / 60) * (newS - s))
+              }];
+              if (hist.length > 50) return hist.slice(hist.length - 50);
+              return hist;
+            });
+          }
+          return newS;
+        });
         setCumulativeWater(prev => prev + (actualWaterFlow / 60));
         setStock((prev: any) => ({
           ...prev,
@@ -236,11 +271,37 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isTimerActive, actualWaterFlow, actualFoamFlow]);
+  }, [isTimerActive, actualWaterFlow, actualFoamFlow, cumulativeWater, stock.maxFoam, stock.foam]);
+
+  useEffect(() => {
+    if (isTimerActive) {
+      if (limitingAutonomy <= 0) {
+        setIsTimerActive(false);
+        if (!stock.isWaterSupplied) {
+          setShowPauseModal(true);
+        }
+      } else if (limitingAutonomy <= 3 && !stock.isWaterSupplied && limitingFactor === 'EAU') {
+        if (!hasShown3MinWarning) {
+          setNotification("Attention 3min d'autonomie si pas d'alimentation de l'engin");
+          setHasShown3MinWarning(true);
+          setTimeout(() => setNotification(null), 5000);
+        }
+      }
+    }
+  }, [isTimerActive, limitingAutonomy, stock.isWaterSupplied, limitingFactor, hasShown3MinWarning]);
+
+  useEffect(() => {
+    if (stock.isWaterSupplied) {
+      setHasShown3MinWarning(false);
+    }
+  }, [stock.isWaterSupplied]);
 
   const formatTime = (s: number) => {
     if (!isFinite(s) || isNaN(s)) return "∞";
-    return `${Math.floor(s/60).toString().padStart(2,'0')}:${Math.floor(s%60).toString().padStart(2,'0')}`;
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+    const secs = Math.floor(s % 60).toString().padStart(2, '0');
+    return h > 0 ? `${h}:${m}:${secs}` : `${m}:${secs}`;
   };
 
   return (
@@ -327,8 +388,8 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
                   <button onClick={() => setStock((s: any) => ({...s, maxFoam: s.maxFoam+10, foam: s.foam+10}))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center active:bg-white/10"><Plus/></button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => { setStock((s: any) => ({...s, maxFoam: 200, foam: 200})); setConcentration(1); }} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.maxFoam === 200 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Bio for N (FPT)</button>
-                  <button onClick={() => { setStock((s: any) => ({...s, maxFoam: 300, foam: 300})); setConcentration(3); }} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${stock.maxFoam === 300 ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Ecopole</button>
+                  <button onClick={() => { setStock((s: any) => ({...s, maxFoam: 200, foam: 200})); setConcentration(1); setEmulseurType('biofor'); }} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${emulseurType === 'biofor' ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Bio for N (FPT)</button>
+                  <button onClick={() => { setStock((s: any) => ({...s, maxFoam: 300, foam: 300})); setConcentration(3); setEmulseurType('ecopol'); }} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${emulseurType === 'ecopol' ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>Ecopol</button>
                 </div>
                 <div className="pt-2"><p className="text-[10px] font-black text-white/40 uppercase mb-2">Taux d'injection</p><div className="grid grid-cols-5 gap-1.5">{PRESET_CONCENTRATIONS.map(c => (<button key={c} onClick={() => setConcentration(c)} className={`py-3 rounded-xl border text-[10px] font-black ${concentration === c ? 'bg-orange-600 border-orange-400' : 'bg-white/5 border-white/10'}`}>{c}%</button>))}</div></div>
               </div>
@@ -380,6 +441,32 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
                 <div className="grid grid-cols-2 gap-2">{EXPANSION_RATES.map(e => (<button key={e.value} onClick={() => { setExpansionRate(e.value); if(e.label.includes('Lance')) setFlowRate(250); if(e.label.includes('Batfan') || e.label.includes('MT296')) setFlowRate(300); }} className={`py-3 rounded-xl border text-[9px] font-black uppercase ${expansionRate === e.value ? 'bg-orange-500 border-orange-400' : 'bg-white/5 border-white/10'}`}>{e.label}<span className="block opacity-60">x{e.value}</span></button>))}</div>
               </div>
             </div>
+
+            <div className="bg-white/[0.02] backdrop-blur-md p-5 rounded-3xl border border-white/10 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-yellow-400 uppercase text-[10px] font-black">
+                  <Thermometer size={16}/> Décantation Cible
+                  <button onClick={() => setShowDecantInfo(true)} className="ml-auto bg-yellow-500/20 text-yellow-400 rounded-full p-1.5 hover:bg-yellow-500/40 transition-colors">
+                    <Info size={14} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <button onClick={() => setTargetDecantation(r => Math.max(5, r - 5))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Minus/></button>
+                  <div className="flex-1 bg-black/40 rounded-xl h-12 flex items-center justify-center font-mono text-2xl font-black">{targetDecantation} <span className="text-sm ml-1 opacity-60">%</span></div>
+                  <button onClick={() => setTargetDecantation(r => Math.min(100, r + 5))} className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center"><Plus/></button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => setTargetDecantation(25)} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${targetDecantation === 25 ? 'bg-yellow-500 border-yellow-400 text-black' : 'bg-white/5 border-white/10'}`}>25%</button>
+                  <button onClick={() => setTargetDecantation(50)} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${targetDecantation === 50 ? 'bg-yellow-500 border-yellow-400 text-black' : 'bg-white/5 border-white/10'}`}>50%</button>
+                  <button onClick={() => setTargetDecantation(100)} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${targetDecantation === 100 ? 'bg-yellow-500 border-yellow-400 text-black' : 'bg-white/5 border-white/10'}`}>100%</button>
+                </div>
+              </div>
+              <div className="space-y-3 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6 flex flex-col justify-center items-center">
+                 <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-1 text-center">Temps de renouvellement estimé</p>
+                 <p className="text-4xl lg:text-5xl font-mono font-black text-yellow-400">{formatTime(decantationSeconds)}</p>
+                 <p className="text-[9px] text-white/30 text-center mt-2">Basé sur {emulseurType === 'biofor' ? 'Bio For N' : 'Ecopol 3 Premium'}</p>
+              </div>
+            </div>
           </div>
           {isTimerActive ? (
              <button onClick={() => setMode('operational')} className="w-full bg-emerald-600 py-6 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><CheckCircle2/> Valider & Retour</button>
@@ -390,6 +477,26 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
                if (!foamStartTime) setFoamStartTime(Date.now());
                if (stock.isWaterSupplied) setStock((s: any) => ({ ...s, water: 3000 })); 
              }} className="w-full bg-gradient-to-br from-orange-600 to-red-800 py-8 rounded-3xl font-black text-xl uppercase tracking-widest shadow-2xl flex items-center justify-center gap-3"><Flame/> Engager l'Attaque</button>
+          )}
+
+          {showDecantInfo && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+              <div className="bg-[#0a0a0a] border border-yellow-500/30 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative text-center">
+                <button onClick={()=>setShowDecantInfo(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X size={20}/></button>
+                <Info className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+                <h3 className="text-lg font-black uppercase text-yellow-400 mb-2">Taux de Décantation</h3>
+                <p className="text-sm text-white/80 mb-4">
+                  C'est le temps nécessaire pour que la mousse perde une partie de son eau (ex: 25%).
+                </p>
+                <div className="bg-white/5 p-3 rounded-xl border border-white/10 text-left space-y-2 mb-6">
+                  <p className="text-xs text-white/60"><strong className="text-orange-400">Bio For N (25%) :</strong> ~2 min</p>
+                  <p className="text-xs text-white/60"><strong className="text-orange-400">Ecopol 3 (25%) :</strong> ~30 min</p>
+                </div>
+                <p className="text-[10px] font-bold text-yellow-400/80 uppercase tracking-widest">
+                  Indicateur de renouvellement du tapis
+                </p>
+              </div>
+            </div>
           )}
         </div>
       ) : mode === 'operational' ? (
@@ -473,7 +580,7 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
               </div>
 
               {/* Row 2: Parameters Strip */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="bg-white/[0.02] p-4 rounded-3xl border border-white/10 flex flex-col items-center justify-center gap-1">
                   <span className="text-[9px] font-black uppercase text-white/30">Débit</span>
                   <span className="text-xl font-mono font-black text-white">{flowRate} <span className="text-xs text-white/40">L/min</span></span>
@@ -486,7 +593,35 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
                   <span className="text-[9px] font-black uppercase text-white/30">Foisonnement</span>
                   <span className="text-xl font-mono font-black text-blue-400">x{expansionRate}</span>
                 </div>
+                <div className="bg-white/[0.02] p-4 rounded-3xl border border-white/10 flex flex-col items-center justify-center gap-1">
+                  <span className="text-[9px] font-black uppercase text-white/30 text-center">Décantation ({targetDecantation}%)</span>
+                  <span className="text-xl font-mono font-black text-yellow-400">{formatTime(decantationSeconds)}</span>
+                </div>
               </div>
+
+              {/* Row 3: Graphique de consommation */}
+              {consumptionHistory.length > 0 && (
+                <div className="bg-white/[0.02] p-4 rounded-[2rem] border border-white/10 flex flex-col gap-2">
+                  <h3 className="text-[10px] font-black text-white/40 uppercase tracking-widest pl-2">Évolution Consommation Cumulée</h3>
+                  <div className="h-40 w-full mt-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={consumptionHistory} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                        <XAxis dataKey="time" stroke="#ffffff40" fontSize={10} tickMargin={5} minTickGap={20} />
+                        <YAxis yAxisId="left" stroke="#60a5fa" fontSize={10} tickFormatter={(val) => `${val}`} />
+                        <YAxis yAxisId="right" orientation="right" stroke="#fb923c" fontSize={10} tickFormatter={(val) => `${val}`} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#050505', border: '1px solid #ffffff10', borderRadius: '1rem', fontSize: '12px' }}
+                          itemStyle={{ fontWeight: 'bold' }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: '10px' }} iconType="circle" />
+                        <Line yAxisId="left" type="monotone" dataKey="eau" name="Eau (L)" stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                        <Line yAxisId="right" type="monotone" dataKey="mousse" name="Émulseur (L)" stroke="#f97316" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex gap-3">
@@ -510,9 +645,13 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
             <h2 className="text-3xl font-black uppercase">Bilan Mousse</h2>
             <div className="grid grid-cols-2 gap-4 pt-4">
               <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Eau Consommée</p><p className="text-2xl font-black">{Math.round(cumulativeWater)}L</p></div>
-              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Émulseur</p><p className="text-2xl font-black text-orange-400">{Math.round(stock.maxFoam - stock.foam)}L</p></div>
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Émulseur Consommé</p><p className="text-2xl font-black text-orange-400">{Math.round(stock.maxFoam - stock.foam)}L</p></div>
             </div>
             <div className="bg-emerald-500/20 p-4 rounded-2xl border border-emerald-500/40 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Mousse Produit</p><p className="text-4xl font-black">{safeFixed(totalFoamProduced, 1)} m³</p></div>
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Eau Restante</p><p className="text-2xl font-black text-blue-400">{stock.isWaterSupplied ? 'Alimenté' : `${Math.round(stock.water)}L`}</p></div>
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-center"><p className="text-[10px] font-black text-white/40 uppercase">Émulseur Restant</p><p className="text-2xl font-black text-orange-400">{Math.round(stock.foam)}L</p></div>
+            </div>
           </div>
           
           <div className="flex gap-3">
@@ -527,7 +666,10 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
                  report += `PARAMÈTRES MOYENS :\n`;
                  report += `- Débit Solution : ${flowRate} L/min\n`;
                  report += `- Concentration : ${concentration}%\n`;
-                 report += `- Foisonnement : x${expansionRate}\n`;
+                 report += `- Foisonnement : x${expansionRate}\n\n`;
+                 report += `STOCK RESTANT :\n`;
+                 report += `- Eau : ${stock.isWaterSupplied ? 'Alimenté' : Math.round(stock.water) + ' L'}\n`;
+                 report += `- Émulseur : ${Math.round(stock.foam)} L\n`;
                  return report;
                };
                const txt = generateReport();
@@ -547,6 +689,7 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
               setMode('setup'); 
               setElapsedSeconds(0); 
               setCumulativeWater(0);
+              setConsumptionHistory([]);
               setIsTimerActive(false); 
               setStock({ water: 3000, foam: 200, maxWater: 3000, maxFoam: 200, isWaterSupplied: false });
               setConcentration(1);
@@ -689,6 +832,34 @@ function FoamApp({ onBack, onHome }: { onBack: () => void, onHome: () => void })
           </div>
         </div>
       )}
+
+      {/* Notification */}
+      {notification && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-orange-500 text-black px-6 py-3 rounded-2xl font-black uppercase tracking-widest shadow-2xl shadow-orange-500/50 animate-bounce">
+          {notification}
+        </div>
+      )}
+
+      {/* Pause Modal */}
+      {showPauseModal && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#0a0a0a] border border-red-500/50 rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl shadow-red-500/20 text-center space-y-6">
+            <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto animate-pulse">
+              <Flame className="w-10 h-10 text-red-500" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black uppercase text-red-500 mb-2">Opération Suspendue</h2>
+              <p className="text-white/60 font-medium">Alimentation de l'engin requise pour continuer la production de mousse.</p>
+            </div>
+            <button 
+              onClick={() => setShowPauseModal(false)} 
+              className="w-full py-4 bg-red-500 text-black rounded-2xl font-black uppercase tracking-widest hover:bg-red-400 transition-colors"
+            >
+              Compris
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -701,7 +872,8 @@ const VENT_MATERIAL_LABELS: Record<string, string> = {
   mt296: 'MT296 (CO)', 
   sax: 'SAX 350', 
   stopPetit: 'Stoppeur Fumées 90cm', 
-  stopGrand: 'Stoppeur Fumées 150cm'
+  stopGrand: 'Stoppeur Fumées 150cm',
+  baliseBleue: "Balise bleue (veine d'aire)"
 };
 
 const VENT_SPECS = [
@@ -781,9 +953,49 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
   const [history, setHistory] = useState<any[]>(Array.isArray(savedState?.history) ? savedState.history : []); 
   const [windDir, setWindDir] = useState<string | null>(savedState?.windDir || null); 
 
+  const [geoData, setGeoData] = useState<{ lat: number, lon: number } | null>(null);
+  const [weatherData, setWeatherData] = useState<{ windSpeed: number, windDirDegrees: number, windDirText: string } | null>(null);
+  const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+
+  const fetchWeatherAndLocation = () => {
+    setIsWeatherLoading(true);
+    setWeatherError(null);
+    if (!navigator.geolocation) {
+      setWeatherError("Géolocalisation non supportée");
+      setIsWeatherLoading(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      setGeoData({ lat, lon });
+      try {
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        const data = await response.json();
+        const speed = data.current_weather.windspeed;
+        const dir = data.current_weather.winddirection;
+        
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO', 'N'];
+        const textDir = dirs[Math.round((dir % 360) / 45)];
+        
+        setWeatherData({ windSpeed: speed, windDirDegrees: dir, windDirText: textDir });
+        setWindDir(textDir); 
+        setChecks(p => ({ ...p, vent: true }));
+      } catch (err) {
+        setWeatherError("Erreur réseau API météo");
+      }
+      setIsWeatherLoading(false);
+    }, (err) => {
+      setWeatherError("Accès position refusé");
+      setIsWeatherLoading(false);
+    }, { enableHighAccuracy: true });
+  };
+
   const [checks, setChecks] = useState(savedState?.checks || { vent: false, batiment: false, stopFumee: false, lance: false, autorise: false, influenceFoyer: false });
   const [pmtt, setPmtt] = useState(savedState?.pmtt || { naturel: false, force: false, horizontale: false, verticale: false, defensive: false, vpp: false, depression: false });
-  const [materials, setMaterials] = useState<Record<string, number>>(savedState?.materials || { batfan: 0, mt296: 0, sax: 0, stopPetit: 0, stopGrand: 0 });
+  const [materials, setMaterials] = useState<Record<string, number>>(savedState?.materials || { batfan: 0, mt296: 0, sax: 0, stopPetit: 0, stopGrand: 0, baliseBleue: 0 });
 
   // Persistance de l'état
   useEffect(() => {
@@ -970,7 +1182,6 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
               <div><h1 className="text-xl sm:text-2xl font-black uppercase bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">Ventilation</h1><p className="text-[9px] sm:text-[10px] font-bold text-emerald-400 uppercase tracking-widest">{history.length > 0 ? `Phase ${history.length+1}` : "SDIS 77"}</p></div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              {isVentilating && <div className="bg-emerald-500/20 border border-emerald-500/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse"><Wind className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400 font-mono font-black text-xs">{safeFormatTime(elapsedSeconds)}</span></div>}
               <button onClick={onHome} className="p-2.5 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"><Home size={20} className="text-white/60"/></button>
               <button onClick={() => setShowPMTTModal(true)} className="p-2.5 bg-white/5 rounded-xl border border-white/10 text-emerald-400"><ClipboardList size={22}/></button>
             </div>
@@ -990,15 +1201,67 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
                   <div><h3 className="text-base font-black uppercase text-orange-400">Analyse 360°</h3><p className="text-[10px] text-white/60">Définir la veine d'air naturel et le bâtimentaire.</p></div>
                 </div>
                 <div className="bg-white/[0.02] backdrop-blur-md p-6 rounded-3xl border border-white/10 flex flex-col items-center gap-4">
-                  <span className="text-[10px] font-black uppercase text-white/40 flex items-center gap-2"><Compass size={14}/> Sens du Vent</span>
-                  <div className="relative w-40 h-40 rounded-full border border-white/10 flex items-center justify-center">
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-white/40 flex items-center gap-2"><Compass size={14}/> Sens du Vent</span>
+                    <button onClick={fetchWeatherAndLocation} disabled={isWeatherLoading} className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[9px] px-3 py-2 rounded-xl flex items-center gap-2 font-bold uppercase transition-colors">
+                      {isWeatherLoading ? <RefreshCcw size={12} className="animate-spin" /> : <MapPin size={12} />}
+                      Auto (Localiser)
+                    </button>
+                  </div>
+
+                  {weatherError && <p className="text-[10px] text-red-400 font-bold uppercase bg-red-500/10 px-3 py-1 rounded w-full text-center">{weatherError}</p>}
+                  
+                  {geoData && (
+                    <div className="w-full h-48 sm:h-56 rounded-2xl overflow-hidden border border-white/20 relative shadow-inner">
+                      <MapContainer center={[geoData.lat, geoData.lon]} zoom={17} zoomControl={false} style={{ width: '100%', height: '100%', zIndex: 10 }}>
+                        <TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />
+                        <Marker position={[geoData.lat, geoData.lon]} />
+                      </MapContainer>
+                      
+                      {weatherData && (
+                        <div className="absolute inset-0 z-[400] pointer-events-none grid grid-cols-6 grid-rows-4 items-center justify-items-center opacity-70 bg-black/10">
+                          {Array.from({ length: 24 }).map((_, i) => (
+                            <ArrowUp key={i} size={24} className="text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,1)]" style={{ transform: `rotate(${weatherData.windDirDegrees + 180}deg)` }} strokeWidth={3} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {geoData && weatherData && (
+                    <div className="w-full bg-black/40 border border-cyan-500/30 p-4 rounded-2xl flex items-center justify-between shadow-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="flex flex-col items-center justify-center bg-white/5 p-3 rounded-xl">
+                           <ArrowUp size={28} className="text-cyan-400 drop-shadow-md" style={{ transform: `rotate(${weatherData.windDirDegrees + 180}deg)` }} strokeWidth={3} />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-black text-white uppercase tracking-widest">Flux d'air</span>
+                          <span className="text-[10px] font-bold text-cyan-400">Origine: {weatherData.windDirText}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col text-right">
+                        <span className="text-4xl font-black text-white leading-none tracking-tighter">{Math.round(weatherData.windSpeed)}</span>
+                        <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest mt-1">km/h</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="relative w-40 h-40 rounded-full border border-white/10 flex items-center justify-center mt-2">
                     {['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'].map((d, i) => (
-                      <button key={d} onClick={() => {setWindDir(d); toggleCheck('vent');}} className={`absolute font-black text-[10px] w-10 h-10 rounded-full flex items-center justify-center ${windDir === d ? 'bg-emerald-500 text-black scale-110' : 'bg-white/5 text-white/40'}`} style={{ transform: `rotate(${i * 45}deg) translate(0, -65px) rotate(-${i * 45}deg)` }}>{d}</button>
+                      <button key={d} onClick={() => {
+                        if (windDir === d) {
+                          setWindDir(null);
+                          setChecks(p => ({ ...p, vent: false }));
+                        } else {
+                          setWindDir(d);
+                          setChecks(p => ({ ...p, vent: true }));
+                        }
+                      }} className={`absolute font-black text-[10px] w-10 h-10 rounded-full flex items-center justify-center ${windDir === d ? 'bg-emerald-500 text-black scale-110' : 'bg-white/5 text-white/40'}`} style={{ transform: `rotate(${i * 45}deg) translate(0, -65px) rotate(-${i * 45}deg)` }}>{d}</button>
                     ))}
                     <Wind className={windDir ? 'text-emerald-400' : 'text-white/10'} />
                   </div>
                 </div>
-                <button onClick={() => toggleCheck('batiment')} className={`w-full p-6 rounded-3xl border flex items-center gap-4 ${checks.batiment ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><Map size={24}/><div className="text-left font-black uppercase text-sm">Structure Bâtimentaire<p className="text-[9px] opacity-60">Volumes et ouvrants reconnus</p></div></button>
+                <button onClick={() => toggleCheck('batiment')} className={`w-full p-6 rounded-3xl border flex items-center gap-4 ${checks.batiment ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><MapIcon size={24}/><div className="text-left font-black uppercase text-sm">Structure Bâtimentaire<p className="text-[9px] opacity-60">Volumes et ouvrants reconnus</p></div></button>
                 <button onClick={() => setStep(2)} className="w-full py-5 bg-white/10 rounded-2xl font-black uppercase">Suivant <ChevronRight className="inline ml-2"/></button>
               </div>
             )}
@@ -1052,7 +1315,10 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
             {step === 3 && (
               <div className="space-y-4 animate-fadeIn">
                 <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
-                  <h4 className="text-[10px] font-black uppercase text-emerald-400 border-b border-white/10 pb-2 flex items-center gap-2"><Settings size={14}/> Matériels utilisés</h4>
+                  <h4 className="text-[10px] font-black uppercase text-emerald-400 border-b border-white/10 pb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2"><Settings size={14}/> Matériels utilisés</div>
+                    <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full tracking-normal normal-case">Inclure matériel autres FPT</span>
+                  </h4>
                   {Object.entries(VENT_MATERIAL_LABELS).map(([k,l]) => (
                     <div key={k} className={`flex items-center justify-between p-2 rounded-xl bg-white/5 border ${k==='mt296'?'border-red-500/20':'border-white/5'}`}>
                       <span className="text-[10px] sm:text-xs font-bold uppercase">{l}</span>
@@ -1063,7 +1329,7 @@ function VentilationApp({ onBack, onHome }: { onBack: () => void, onHome: () => 
                 <div className="bg-white/[0.02] p-5 rounded-3xl border border-white/10 space-y-3">
                    <h4 className="text-[10px] font-black uppercase text-white/40 border-b border-white/5 pb-2">Checklist de sécurité</h4>
                    <button onClick={() => toggleCheck('autorise')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.autorise ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[10px] sm:text-xs">Autorisation COS obtenue</span></button>
-                   <button onClick={() => toggleCheck('stopFumee')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.stopFumee ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[10px] sm:text-xs">Maîtrise des flux (Stop Fumées)</span></button>
+                   <button onClick={() => toggleCheck('stopFumee')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.stopFumee ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[10px] sm:text-xs">Maîtrise des entrants & sortants</span></button>
                    <button onClick={() => toggleCheck('influenceFoyer')} className={`w-full p-4 rounded-xl border flex items-center gap-3 ${checks.influenceFoyer ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-white/5 border-white/10'}`}><CheckSquare size={20}/> <span className="font-black uppercase text-[10px] sm:text-xs">Aucune influence sur le foyer</span></button>
                 </div>
                 <button disabled={!(checks.autorise && checks.stopFumee && checks.influenceFoyer)} onClick={() => { setIsVentilating(true); setStep(4); setStartTime(new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})); }} className={`w-full py-8 rounded-3xl font-black text-xl uppercase tracking-widest ${checks.autorise && checks.stopFumee && checks.influenceFoyer ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/40' : 'bg-white/5 text-white/20'}`}>Démarrer Ventilation</button>
@@ -1381,7 +1647,6 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
   const [shape, setShape] = useState<'rect' | 'circle'>(savedState?.shape || 'rect');
   const [dim1, setDim1] = useState<number>(() => { const v = savedState?.dim1; return (typeof v === 'number' && isFinite(v)) ? v : 0; });
   const [dim2, setDim2] = useState<number>(() => { const v = savedState?.dim2; return (typeof v === 'number' && isFinite(v)) ? v : 0; });
-  const [height, setHeight] = useState<number>(() => { const v = savedState?.height; return (typeof v === 'number' && isFinite(v)) ? v : 0; });
   
   // SDIS 77 Logic
   const [fireType, setFireType] = useState<'hydro' | 'polar' | 'solid'>(savedState?.fireType || 'hydro');
@@ -1395,9 +1660,9 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
   // Persistance de l'état
   useEffect(() => {
     localStorage.setItem('sdis77_surface_state', JSON.stringify({
-      shape, dim1, dim2, height, fireType, actionType, product, rate, solidConcentration
+      shape, dim1, dim2, fireType, actionType, product, rate, solidConcentration
     }));
-  }, [shape, dim1, dim2, height, fireType, actionType, product, rate, solidConcentration]);
+  }, [shape, dim1, dim2, fireType, actionType, product, rate, solidConcentration]);
 
   // Update defaults when Fire Type or Action Type changes
   useEffect(() => {
@@ -1509,42 +1774,13 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
                   </div>
                 </div>
               )}
-              
-              <div className="space-y-1 pt-2 border-t border-blue-400/10">
-                <label className="text-[10px] uppercase text-blue-400 font-bold">Hauteur (H) <span className="opacity-50">- Optionnel (Vol.)</span></label>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="number" 
-                    inputMode="decimal"
-                    value={height || ''} 
-                    onChange={(e) => setHeight(parseFloat(e.target.value.replace(',', '.')) || 0)} 
-                    onFocus={(e) => e.target.select()}
-                    className="flex-1 bg-blue-950/50 border border-blue-400/30 rounded p-3 text-xl font-bold text-white focus:border-blue-400 outline-none" 
-                    placeholder="0" 
-                  />
-                  <span className="text-blue-400 font-bold">m</span>
-                </div>
-              </div>
             </div>
 
             <div className="pt-4 border-t border-blue-400/20 space-y-2">
-              {height > 0 ? (
-                <>
-                  <div className="flex justify-between items-end animate-fadeIn">
-                    <span className="text-xs uppercase text-blue-300 font-bold">Volume Total</span>
-                    <span className="text-4xl font-black text-white">{Math.round(surface * height)} <span className="text-lg text-blue-400">m³</span></span>
-                  </div>
-                  <div className="flex justify-between items-end opacity-60">
-                    <span className="text-[10px] uppercase text-blue-300/70 font-bold">Surface au sol</span>
-                    <span className="text-xl font-black text-white/80">{Math.round(surface)} <span className="text-sm text-blue-400/70">m²</span></span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex justify-between items-end">
-                  <span className="text-xs uppercase text-blue-300 font-bold">Surface Totale</span>
-                  <span className="text-4xl font-black text-white">{Math.round(surface)} <span className="text-lg text-blue-400">m²</span></span>
-                </div>
-              )}
+              <div className="flex justify-between items-end">
+                <span className="text-xs uppercase text-blue-300 font-bold">Surface Totale</span>
+                <span className="text-4xl font-black text-white">{Math.round(surface)} <span className="text-lg text-blue-400">m²</span></span>
+              </div>
             </div>
           </div>
 
@@ -1677,7 +1913,7 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
                 <span className="text-lg sm:text-2xl text-blue-400 ml-2 font-bold">L/min</span>
               </div>
               <p className="text-[10px] text-blue-200/50">
-                {height > 0 ? `Pour ${Math.round(surface * height)}m³` : `Pour ${Math.round(surface)}m²`} • {product === 'biofor' ? 'Bio For N' : 'Ecopol'} ({concentration}%)
+                Pour {Math.round(surface)}m² • {product === 'biofor' ? 'Bio For N' : 'Ecopol'} ({concentration}%)
               </p>
             </div>
 
@@ -1722,35 +1958,6 @@ function SurfaceApp({ onBack, onHome }: { onBack: () => void, onHome: () => void
               </div>
             )}
           </div>
-
-          {/* Estimation Remplissage Volume */}
-          {height > 0 && (
-            <div className="bg-blue-900/30 p-4 rounded-xl border border-blue-400/20 space-y-3 animate-fadeIn">
-              <h3 className="text-[10px] font-black uppercase text-blue-300 border-b border-blue-400/10 pb-2 flex items-center gap-2">
-                <BoxSelect size={14}/> Estimation Remplissage (Vol. {Math.round(surface * height)} m³)
-              </h3>
-              <div className="grid grid-cols-1 gap-2">
-                <div className="flex justify-between items-center p-2 bg-blue-950/40 rounded-lg border border-blue-400/10">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase text-blue-200">Générateur Mousse (300 L/min)</span>
-                    <span className="text-[9px] text-blue-400/60">Haut Foisonnement x500</span>
-                  </div>
-                  <span className="text-lg font-black text-white">
-                    {isFinite((surface * height) / ((300 * 500) / 1000)) ? Math.ceil((surface * height) / ((300 * 500) / 1000)) : 0} <span className="text-xs font-bold text-blue-400">min</span>
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-2 bg-blue-950/40 rounded-lg border border-blue-400/10">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold uppercase text-blue-200">Ventilateur (300 L/min)</span>
-                    <span className="text-[9px] text-blue-400/60">Haut Foisonnement x300</span>
-                  </div>
-                  <span className="text-lg font-black text-white">
-                    {isFinite((surface * height) / ((300 * 300) / 1000)) ? Math.ceil((surface * height) / ((300 * 300) / 1000)) : 0} <span className="text-xs font-bold text-blue-400">min</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* RÉFÉRENTIEL CAPACITÉS ENGINS */}
           <div className="pt-6 border-t border-white/10 space-y-4">
